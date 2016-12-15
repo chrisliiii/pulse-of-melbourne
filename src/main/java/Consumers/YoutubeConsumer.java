@@ -1,6 +1,4 @@
-package Consumers; /**
- * Created by geoffcunliffe on 1/12/2016.
- */
+package Consumers;
 
 import com.google.api.client.googleapis.json.GoogleJsonResponseException;
 import com.google.api.client.http.HttpRequest;
@@ -19,10 +17,9 @@ import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonPrimitive;
 import org.lightcouch.CouchDbClient;
+import org.lightcouch.NoDocumentException;
 
 import java.io.IOException;
-import java.sql.Time;
-import java.sql.Timestamp;
 import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
@@ -41,76 +38,107 @@ public class YoutubeConsumer extends Thread {
 
     public void run() {
 
-        String location = "-38.2601,144.3537";
-        String locationRadius = "50km";
-
-        YouTube youtube = new YouTube.Builder(new NetHttpTransport(), new JacksonFactory(), new HttpRequestInitializer() {
-//            @Override
-            public void initialize(HttpRequest request) throws IOException {
-            }
-        }).setApplicationName("streamerater").build();
-
-        // Define the API request for retrieving search results.
-        YouTube.Search.List search = null;
-        try {
-            search = search = youtube.search().list("snippet");
-        } catch (IOException e) {
-            e.printStackTrace();
-        }
-
-        search.setKey(apiKey);
-        search.setOrder("date");
-        search.setLocation(location);
-        search.setLocationRadius(locationRadius);
-        search.setType("video");
-        // As a best practice, only retrieve the fields that the application uses.
-        search.setFields("items(id/videoId)");
-        search.setMaxResults((long) 25);
-
-
         while (true) {
 
-            try {
-
-                SearchListResponse searchResponse = search.execute();
-                List<SearchResult> searchResultList = searchResponse.getItems();
-                List<String> videoIds = new ArrayList<String>();
-                if (searchResultList != null) {
-
-                    // Merge video IDs
-                    for (SearchResult searchResult : searchResultList) {
-                        videoIds.add(searchResult.getId().getVideoId());
-                    }
-                    Joiner stringJoiner = Joiner.on(',');
-                    String videoId = stringJoiner.join(videoIds);
-
-                    // Call the YouTube Data API's youtube.videos.list method to
-                    // retrieve the resources that represent the specified videos.
-                    YouTube.Videos.List listVideosRequest = youtube.videos().list("snippet, recordingDetails").setId(videoId);
-                    listVideosRequest.setKey(apiKey);
-                    VideoListResponse listResponse = listVideosRequest.execute();
-
-                    List<Video> videoList = listResponse.getItems();
-
-                    if (videoList.isEmpty())  {
-                        System.out.println("ain't nothing there, man");
-                        TimeUnit.SECONDS.sleep(30);
-                    }
-                    else {
-                        DateTime latest = new DateTime(videoList.get(0).getSnippet().getPublishedAt().getValue() + 1000);
-                        search.setPublishedAfter(latest);
-                        saveToDB(videoList.iterator(), dbClient);
-                    }
-
+            YouTube youtube = new YouTube.Builder(new NetHttpTransport(), new JacksonFactory(), new HttpRequestInitializer() {
+                //            @Override
+                public void initialize(HttpRequest request) throws IOException {
                 }
-            } catch (GoogleJsonResponseException e) {
-                System.err.println("There was a service error: " + e.getDetails().getCode() + " : "
-                        + e.getDetails().getMessage());
+            }).setApplicationName("streamerater").build();
+
+            DateTime latestdate = getLatestDate();
+
+            // Define the API request for retrieving search results.
+            YouTube.Search.List search = null;
+            try {
+                search = youtube.search().list("snippet");
+                search.setKey(apiKey);
+                search.setOrder("date");
+                search.setLocation("-38.2601,144.3537");
+                search.setLocationRadius("5km");
+                search.setPublishedAfter(latestdate);
+                search.setType("video");
+                // As a best practice, only retrieve the fields that the application uses.
+                search.setFields("items(id/videoId)");
+                search.setMaxResults((long) 50);
             } catch (IOException e) {
-                System.err.println("There was an IO error: " + e.getCause() + " : " + e.getMessage());
-            } catch (Throwable t) {
-                t.printStackTrace();
+                e.printStackTrace();
             }
+
+            while (true) {
+
+                try {
+
+                    assert search != null;
+                    SearchListResponse searchResponse = search.execute();
+                    List<SearchResult> searchResultList = searchResponse.getItems();
+                    List<String> videoIds = new ArrayList<String>();
+                    if (searchResultList != null) {
+
+                        // Merge video IDs
+                        for (SearchResult searchResult : searchResultList) {
+                            videoIds.add(searchResult.getId().getVideoId());
+                        }
+                        Joiner stringJoiner = Joiner.on(',');
+                        String videoId = stringJoiner.join(videoIds);
+
+                        // Call the YouTube Data API's youtube.videos.list method to
+                        // retrieve the resources that represent the specified videos.
+                        YouTube.Videos.List listVideosRequest = youtube.videos().list("snippet, recordingDetails").setId(videoId);
+                        listVideosRequest.setKey(apiKey);
+                        VideoListResponse listResponse = listVideosRequest.execute();
+
+                        List<Video> videoList = listResponse.getItems();
+
+                        if (videoList.isEmpty()) {
+                            System.out.println("There aren't any results for your YOUTUBE query. Pausing 30 minutes");
+                            TimeUnit.MINUTES.sleep(30);
+                        } else {
+                            DateTime latest = new DateTime(videoList.get(0).getSnippet().getPublishedAt().getValue() + 1000);
+                            saveLatestDate(latest);
+                            search.setPublishedAfter(latest);
+                            saveToDB(videoList.iterator(), dbClient);
+                        }
+
+                    }
+                } catch (GoogleJsonResponseException e) {
+                    System.err.println("There was a service error: " + e.getDetails().getCode() + " : "
+                            + e.getDetails().getMessage());
+                } catch (IOException e) {
+                    System.err.println("There was an IO error: " + e.getCause() + " : " + e.getMessage());
+                } catch (Throwable t) {
+                    t.printStackTrace();
+                }
+            }
+        }
+    }
+
+    private DateTime getLatestDate() {
+        try {
+            JsonObject latestDbObj = dbClient.find(JsonObject.class, "latest_flickr");
+            return new DateTime(latestDbObj.get("latest_flickr").getAsLong());
+        } catch (NoDocumentException e) {
+            System.out.println("No latest_flickr document found, continuing");
+            return new DateTime(0);
+        }
+    }
+
+    private void saveLatestDate(DateTime latest) {
+        JsonObject latestTimeObj = new JsonObject();
+//        System.out.println(latest.getValue());
+        try {
+            JsonObject latestDbObj = dbClient.find(JsonObject.class, "latest_youtube");
+            String latestRev = latestDbObj.get("_rev").getAsString();
+            latestTimeObj.addProperty("_id", "latest_youtube");
+            latestTimeObj.addProperty("_rev", latestRev);
+            latestTimeObj.addProperty("latest_youtube", latest.getValue());
+            dbClient.update(latestTimeObj);
+        }
+        catch (NoDocumentException e) {
+            System.out.println("No latest_youtube document found, creating.");
+            latestTimeObj.addProperty("_id", "latest_youtube");
+            latestTimeObj.addProperty("latest_youtube", latest.getValue());
+            dbClient.save(latestTimeObj);
         }
     }
 
@@ -118,7 +146,7 @@ public class YoutubeConsumer extends Thread {
     private void saveToDB(Iterator<Video> iteratorVideoResults, CouchDbClient dbClient) {
 
         if (!iteratorVideoResults.hasNext()) {
-            System.out.println(" There aren't any results for your query.");
+            System.out.println("There aren't any results for your YOUTUBE query.");
         }
 
         while (iteratorVideoResults.hasNext()) {
@@ -126,6 +154,7 @@ public class YoutubeConsumer extends Thread {
             Video singleVideo = iteratorVideoResults.next();
             DateTime dateTaken = singleVideo.getRecordingDetails().getRecordingDate();
             if (dateTaken != null) {
+
                 GeoPoint location = singleVideo.getRecordingDetails().getLocation();
                 JsonArray coordinates = new JsonArray();
                 JsonObject videoObj = new JsonObject();

@@ -70,6 +70,22 @@
 
     </dependencies>
 
+    <build>
+    <plugins>
+    <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-jar-plugin</artifactId>
+        <version>3.0.2</version>
+        <configuration>
+            <archive>
+                <manifest>
+                    <manifestFile>${project.build.outputDirectory}/resources/META-INF/MANIFEST.MF</manifestFile>
+                </manifest>
+            </archive>
+        </configuration>
+    </plugin>
+    </plugins>
+    </build>
 
 
 </project>

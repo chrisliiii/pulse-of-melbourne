@@ -1,19 +1,18 @@
 package Consumers;
 
+import com.google.gson.JsonArray;
+import com.google.gson.JsonObject;
+import com.google.gson.JsonPrimitive;
 import fi.foyt.foursquare.api.FoursquareApi;
 import fi.foyt.foursquare.api.FoursquareApiException;
 import fi.foyt.foursquare.api.Result;
 import fi.foyt.foursquare.api.entities.CompactVenue;
 import fi.foyt.foursquare.api.entities.VenuesSearchResult;
 import org.lightcouch.CouchDbClient;
-import org.omg.CORBA.DoubleHolder;
 
-import static java.lang.Math.cos;
+import java.sql.Timestamp;
+import java.util.HashSet;
 
-
-/**
- * Created by geoffcunliffe on 30/11/2016.
- */
 public class FoursquareConsumer extends Thread {
 
     private final String clientId;
@@ -31,60 +30,78 @@ public class FoursquareConsumer extends Thread {
     public void run() {
 
         FoursquareApi foursquareApi = new FoursquareApi(clientId, secret, callbackUrl);
+        long startTime = System.currentTimeMillis();
 
-        //Position, decimal degrees
-        double lat = -37.8136;
-        double lon = 144.963;
+        //Start Position is -37.768648, 144.906196, end is -37.85495584000002,145.0200039999997
+        double lat = -37.768648;
+        double lon;
 
-        //Earth’s radius, sphere
-        long radius = 6378137;
+        //400m offset
+        double lonoffset = 0.00455232;
+        double latoffset = 0.00359616;
 
-        //offsets in meters
-        int dn = 100;
-        int de = 100;
+        HashSet<String> idSet = new HashSet<String>();
 
-        for (int i = 0; i < 5; i++){
+        // These for loops set up a rectangular mesh over a 10km*10km area, checking the venues
+        // every 400 metres to find the number of people currently at them
+        for (int i = 0; i < 25; i++) {
 
-            //Coordinate offsets in radians
-            double dLat = dn / radius;
-            double dLon = de / (radius * cos(Math.PI * lat / 180));
+            if (i % 2 == 0) lon = 144.906196;
+            else lon = 144.906196 - 0.00227616;
 
-            //OffsetPosition, decimal degrees
-            lat = lat + dLat * 180 / Math.PI;
-            lon = lon + dLon * 180 / Math.PI;
+            for (int j = 0; j < 25; j++) {
+                lon = lon + lonoffset;
 
-            String ll = Double.toString(lat) + "," + Double.toString(lon);
-            System.out.println(ll);
+                String ll = Double.toString(lat) + "," + Double.toString(lon);
+//                System.out.println(ll);
 
-            Result<VenuesSearchResult> result = null;
-//            Result<CompactVenue[]> result = null;
-            try {
-//                result = foursquareApi.venuesTrending(ll,50,2000);
-                result = foursquareApi.venuesSearch(ll, null, null, null, null, 50, null, null, null, null, null, 100, null);
-            } catch (FoursquareApiException e) {
-                e.printStackTrace();
-            }
+                try {
+                    Result<VenuesSearchResult> result = foursquareApi.venuesSearch(ll, null, null, null, null, 50, null, null, null, null, null, 230, null);
 
-            //Result<VenuesSearchResult> result = foursquareApi.venuesSearch();
+                    assert result != null;
+                    if (result.getMeta().getCode() == 200) {
+                        // if query was ok we can finally we do something with the data
+                        for (CompactVenue venue : result.getResult().getVenues()) {
+                            long hereNowCount = venue.getHereNow().getCount();
+                            String venueId = venue.getId();
+                            if (hereNowCount > 0 && !idSet.contains(venueId)) {
+                                saveToDB(venue, hereNowCount);
+                            }
+                            idSet.add(venueId);
+                        }
+                    } else {
+                        System.out.println("Error occured: ");
+                        System.out.println("  code: " + result.getMeta().getCode());
+                        System.out.println("  type: " + result.getMeta().getErrorType());
+                        System.out.println("  detail: " + result.getMeta().getErrorDetail());
+                    }
 
-
-            if (result.getMeta().getCode() == 200) {
-                // if query was ok we can finally we do something with the data
-                for (CompactVenue venue : result.getResult().getVenues()) {
-//                for (CompactVenue venue : result.getResult()) {
-                    System.out.println(venue.getName() + " " + venue.getLocation().getLat() + "," + venue.getLocation().getLng() + " count: " + venue.getHereNow().getCount());
+                } catch (FoursquareApiException e) {
+                    e.printStackTrace();
                 }
-            } else {
-                System.out.println("Error occured: ");
-                System.out.println("  code: " + result.getMeta().getCode());
-                System.out.println("  type: " + result.getMeta().getErrorType());
-                System.out.println("  detail: " + result.getMeta().getErrorDetail());
+                lat = lat - latoffset;
+
             }
-
-            System.out.println("\n");
         }
+        long estimatedTime = System.currentTimeMillis() - startTime;
+        System.out.println(estimatedTime);
+    }
+    private void saveToDB(CompactVenue venue, long hereNowCount) {
+        JsonArray coordinates = new JsonArray();
+        JsonObject venueObj = new JsonObject();
 
+        venueObj.addProperty("timestamp", System.currentTimeMillis());
+        JsonPrimitive postLatitude = new JsonPrimitive(venue.getLocation().getLat());
+        JsonPrimitive postLongitude = new JsonPrimitive(venue.getLocation().getLng());
+        coordinates.add(postLatitude);
+        coordinates.add(postLongitude);
+        venueObj.add("coordinates", coordinates);
+        venueObj.addProperty("foursquare", venue.getId());
+        System.out.println(venueObj.toString());
+
+        for (int i = 0; i < hereNowCount; i++)
+            dbClient.save(venueObj);
     }
 
 
-    }
+}

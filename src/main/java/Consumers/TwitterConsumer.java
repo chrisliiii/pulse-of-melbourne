@@ -1,6 +1,5 @@
-package Consumers; /**
- * Created by geoff on 24/03/2016.
- */
+package Consumers;
+
 import com.google.common.collect.Lists;
 import com.google.gson.*;
 import com.twitter.hbc.ClientBuilder;
@@ -12,7 +11,6 @@ import com.twitter.hbc.core.processor.StringDelimitedProcessor;
 import com.twitter.hbc.httpclient.BasicClient;
 import com.twitter.hbc.httpclient.auth.Authentication;
 import com.twitter.hbc.httpclient.auth.OAuth1;
-import org.json.JSONArray;
 import org.lightcouch.CouchDbClient;
 
 import java.util.concurrent.BlockingQueue;
@@ -45,7 +43,7 @@ public class TwitterConsumer extends Thread {
         StatusesFilterEndpoint endpoint = new StatusesFilterEndpoint();
         Coordinate southwest = new Coordinate(144.3537, -38.2601);
         Coordinate northeast = new Coordinate(145.3045, -37.3040);
-        Location melbourne = new Location(southwest,northeast);
+        Location melbourne = new Location(southwest, northeast);
         endpoint.locations(Lists.newArrayList(melbourne));
 
         Authentication auth = new OAuth1(consumerKey, consumerSecret, token, secret);
@@ -65,7 +63,7 @@ public class TwitterConsumer extends Thread {
         JsonParser parser = new JsonParser();
 
         // Do whatever needs to be done with messages
-        for (int msgRead = 0; msgRead < 1000; msgRead++) {
+        while (true) {
             if (client.isDone()) {
                 System.out.println("Client connection closed unexpectedly: " + client.getExitEvent().getMessage());
                 break;
@@ -73,33 +71,16 @@ public class TwitterConsumer extends Thread {
 
             String msg = null;
             try {
-                msg = queue.poll(5, TimeUnit.SECONDS);
+                msg = queue.poll(30, TimeUnit.SECONDS);
             } catch (InterruptedException e) {
                 e.printStackTrace();
             }
 
             if (msg == null) {
-                System.out.println("Did not receive a message in 5 seconds");
+                System.out.println("Did not receive a message in 30 seconds");
             } else {
                 JsonObject obj = (JsonObject) parser.parse(msg);
-                if (obj.has("coordinates") && !obj.get("coordinates").isJsonNull()) {
-                    JsonObject twitterObj = new JsonObject();
-                    JsonArray coordinates = new JsonArray();
-
-                    twitterObj.addProperty("timestamp",Long.parseLong(obj.get("timestamp_ms").toString().replaceAll("\"","")));
-
-                    JsonElement backwardsCoordinates = obj.getAsJsonObject("coordinates").get("coordinates");
-                    System.out.println(backwardsCoordinates);
-//                    JsonPrimitive latitude = backwardsCoordinates.getAsJsonPrimitive("latitude");
-//                    JsonPrimitive longitude = backwardsCoordinates.getAsJsonPrimitive("longitude");
-//                    coordinates.add(latitude);
-//                    coordinates.add(longitude);
-
-                    twitterObj.add("coordinates",obj.getAsJsonObject("coordinates").get("coordinates"));
-                    twitterObj.add("twitter",obj.getAsJsonObject("user").get("id"));
-                    System.out.println(twitterObj.toString());
-                    dbClient.save(twitterObj);
-                }
+                saveToDB(obj);
             }
         }
 
@@ -110,4 +91,23 @@ public class TwitterConsumer extends Thread {
         System.out.printf("The client read %d messages!\n", client.getStatsTracker().getNumMessages());
     }
 
+    private void saveToDB(JsonObject obj) {
+        if (obj.has("coordinates") && !obj.get("coordinates").isJsonNull()) {
+            JsonObject twitterObj = new JsonObject();
+            JsonArray coordinates = new JsonArray();
+
+            twitterObj.addProperty("timestamp", Long.parseLong(obj.get("timestamp_ms").toString().replaceAll("\"", "")));
+
+            JsonArray backwardsCoordinates = obj.getAsJsonObject("coordinates").get("coordinates").getAsJsonArray();
+            JsonPrimitive latitude = backwardsCoordinates.get(1).getAsJsonPrimitive();
+            JsonPrimitive longitude = backwardsCoordinates.get(0).getAsJsonPrimitive();
+            coordinates.add(latitude);
+            coordinates.add(longitude);
+
+            twitterObj.add("coordinates", coordinates);
+            twitterObj.add("twitter", obj.getAsJsonObject("user").get("id"));
+            System.out.println(twitterObj.toString());
+            dbClient.save(twitterObj);
+        }
+    }
 }

@@ -98,9 +98,9 @@ public class FoursquareConsumer extends Thread {
         venueObj.add("coordinates", coordinates);
         venueObj.addProperty("foursquare", venue.getId());
         System.out.println(venueObj.toString());
-
-        for (int i = 0; i < hereNowCount; i++)
+        for (int i = 0; i < hereNowCount; i++) {
             dbClient.save(venueObj);
+        }
     }
 
 

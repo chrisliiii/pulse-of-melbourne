@@ -106,10 +106,11 @@ public class InstagramConsumer extends Thread {
         try {
             JsonObject latestDbObj = dbClient.find(JsonObject.class, "latest_instagram");
             String latestRev = latestDbObj.get("_rev").getAsString();
+            dbClient.remove("latest_instagram",latestRev);
             latestTimeObj.addProperty("_id", "latest_instagram");
-            latestTimeObj.addProperty("_rev", latestRev);
+//            latestTimeObj.addProperty("_rev", latestRev);
             latestTimeObj.addProperty("latest_instagram", createdTime);
-            dbClient.update(latestTimeObj);
+            dbClient.save(latestTimeObj);
         } catch (NoDocumentException e) {
             System.out.println("No latest_instagram document found, creating.");
             latestTimeObj.addProperty("_id", "latest_instagram");

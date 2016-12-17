@@ -126,18 +126,20 @@ public class YoutubeConsumer extends Thread {
     private void saveLatestDate(DateTime latest) {
         JsonObject latestTimeObj = new JsonObject();
 //        System.out.println(latest.getValue());
+        String id = "latest_youtube";
         try {
-            JsonObject latestDbObj = dbClient.find(JsonObject.class, "latest_youtube");
+            JsonObject latestDbObj = dbClient.find(JsonObject.class, id);
             String latestRev = latestDbObj.get("_rev").getAsString();
-            latestTimeObj.addProperty("_id", "latest_youtube");
-            latestTimeObj.addProperty("_rev", latestRev);
-            latestTimeObj.addProperty("latest_youtube", latest.getValue());
+            dbClient.remove(id,latestRev);
+            latestTimeObj.addProperty("_id", id);
+//            latestTimeObj.addProperty("_rev", latestRev);
+            latestTimeObj.addProperty(id, latest.getValue());
             dbClient.update(latestTimeObj);
         }
         catch (NoDocumentException e) {
             System.out.println("No latest_youtube document found, creating.");
-            latestTimeObj.addProperty("_id", "latest_youtube");
-            latestTimeObj.addProperty("latest_youtube", latest.getValue());
+            latestTimeObj.addProperty("_id", id);
+            latestTimeObj.addProperty(id, latest.getValue());
             dbClient.save(latestTimeObj);
         }
     }

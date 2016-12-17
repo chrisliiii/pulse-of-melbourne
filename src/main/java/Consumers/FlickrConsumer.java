@@ -41,8 +41,8 @@ public class FlickrConsumer extends Thread {
                 SearchParameters searchParameters = new SearchParameters();
                 searchParameters.setAccuracy(6); //6 is region accuracy
                 searchParameters.setHasGeo(true);
-                searchParameters.setSort(2); //sorts by date taken descending
-                searchParameters.setMinTakenDate(dblatest);
+                searchParameters.setSort(0); //sorts by date taken descending
+                searchParameters.setMinUploadDate(dblatest);
                 searchParameters.setBBox("144.3537",
                         "-38.2601",
                         "145.3045",
@@ -52,18 +52,18 @@ public class FlickrConsumer extends Thread {
 
 
                     //search arguments are parameters,results per query,page number
-                    PhotoList<Photo> photoList = flickr.getPhotosInterface().search(searchParameters, 30, 0);
+                    PhotoList<Photo> photoList = flickr.getPhotosInterface().search(searchParameters, 5, 0);
                     Iterator itr = photoList.iterator();
 
                     if (!itr.hasNext()) {
-                        System.out.println("There aren't any results for your FLICKR query. Pausing 30 seconds");
-//                    System.out.println(searchParameters.getMinTakenDate());
-                        TimeUnit.SECONDS.sleep(30);
+                        System.out.println("There aren't any results for your FLICKR query. Pausing 30 minutes");
+                    System.out.println(searchParameters.getMinUploadDate());
+                        TimeUnit.MINUTES.sleep(30);
                     } else {
 
                         Photo latestPhoto = flickr.getPhotosInterface().getInfo(photoList.get(0).getId(), secret);
                         saveLatestFlickrDateTaken(latestPhoto);
-                        searchParameters.setMinTakenDate(latestPhoto.getDateTaken());
+                        searchParameters.setMinUploadDate(latestPhoto.getDatePosted());
 
                         while (itr.hasNext()) {
                             Photo photo = (Photo) itr.next();
@@ -79,6 +79,7 @@ public class FlickrConsumer extends Thread {
             } catch (FlickrException e) {
                 e.printStackTrace();
             } catch (Exception e) {
+                System.out.println("There is something wrong with flickr, retrying");
                 e.printStackTrace();
             }
 
@@ -114,17 +115,19 @@ public class FlickrConsumer extends Thread {
     public void saveLatestFlickrDateTaken(Photo latestFlickrPhoto) {
 //        System.out.println(latestFlickrPhoto.getDateTaken());
         JsonObject latestTimeObj = new JsonObject();
+        String id = "latest_flickr";
         try {
-            JsonObject latestDbObj = dbClient.find(JsonObject.class, "latest_flickr");
+            JsonObject latestDbObj = dbClient.find(JsonObject.class, id);
             String latestRev = latestDbObj.get("_rev").getAsString();
-            latestTimeObj.addProperty("_id", "latest_flickr");
-            latestTimeObj.addProperty("_rev", latestRev);
-            latestTimeObj.addProperty("latest_flickr", latestFlickrPhoto.getDateTaken().getTime());
-            dbClient.update(latestTimeObj);
+            dbClient.remove(id,latestRev);
+            latestTimeObj.addProperty("_id", id);
+//            latestTimeObj.addProperty("_rev", latestRev);
+            latestTimeObj.addProperty(id, latestFlickrPhoto.getDatePosted().getTime());
+            dbClient.save(latestTimeObj);
         } catch (NoDocumentException e) {
             System.out.println("No latest_flickr document found, creating.");
-            latestTimeObj.addProperty("_id", "latest_flickr");
-            latestTimeObj.addProperty("latest_flickr", latestFlickrPhoto.getDateTaken().getTime());
+            latestTimeObj.addProperty("_id", id);
+            latestTimeObj.addProperty(id, latestFlickrPhoto.getDatePosted().getTime());
             dbClient.save(latestTimeObj);
         }
     }

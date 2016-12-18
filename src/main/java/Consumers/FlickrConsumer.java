@@ -42,36 +42,34 @@ public class FlickrConsumer extends Thread {
                 searchParameters.setAccuracy(6); //6 is region accuracy
                 searchParameters.setHasGeo(true);
                 searchParameters.setSort(0); //sorts by date taken descending
-                searchParameters.setMinUploadDate(dblatest);
-                searchParameters.setBBox("144.3537",
-                        "-38.2601",
-                        "145.3045",
-                        "-37.3040");
+//                searchParameters.setMinUploadDate(dblatest);
+                //Sydney
+                searchParameters.setLatitude("-33.8688");
+                searchParameters.setLongitude("151.2093");
+                //Melbourne
+//                searchParameters.setLatitude("-37.8136");
+//                searchParameters.setLongitude("144.9631");
 
-                while (true) {
+                //search arguments are parameters,results per query,page number
+                PhotoList<Photo> photoList = flickr.getPhotosInterface().search(searchParameters, 500, 0);
+                Iterator itr = photoList.iterator();
 
+                if (!itr.hasNext()) {
+                    System.out.println("There aren't any results for your FLICKR query. Pausing 30 minutes");
+//                    System.out.println(searchParameters.getMinUploadDate());
+                    TimeUnit.MINUTES.sleep(30);
+                } else {
 
-                    //search arguments are parameters,results per query,page number
-                    PhotoList<Photo> photoList = flickr.getPhotosInterface().search(searchParameters, 5, 0);
-                    Iterator itr = photoList.iterator();
+                    Photo latestPhoto = flickr.getPhotosInterface().getInfo(photoList.get(0).getId(), secret);
+                    saveLatestFlickrDateTaken(latestPhoto);
+                    searchParameters.setMinUploadDate(new Timestamp(latestPhoto.getLastUpdate().getTime() + 30000));
 
-                    if (!itr.hasNext()) {
-                        System.out.println("There aren't any results for your FLICKR query. Pausing 30 minutes");
-                    System.out.println(searchParameters.getMinUploadDate());
-                        TimeUnit.MINUTES.sleep(30);
-                    } else {
+                    while (itr.hasNext()) {
+                        Photo photo = (Photo) itr.next();
+                        Photo photoWithInfo = flickr.getPhotosInterface().getInfo(photo.getId(), secret);
 
-                        Photo latestPhoto = flickr.getPhotosInterface().getInfo(photoList.get(0).getId(), secret);
-                        saveLatestFlickrDateTaken(latestPhoto);
-                        searchParameters.setMinUploadDate(latestPhoto.getDatePosted());
+                        saveToDB(photoWithInfo);
 
-                        while (itr.hasNext()) {
-                            Photo photo = (Photo) itr.next();
-                            Photo photoWithInfo = flickr.getPhotosInterface().getInfo(photo.getId(), secret);
-
-                            saveToDB(photoWithInfo);
-
-                        }
                     }
                 }
             } catch (InterruptedException e) {
@@ -99,8 +97,10 @@ public class FlickrConsumer extends Thread {
         flickrObj.add("coordinates", coordinates);
         flickrObj.addProperty("flickr", photoWithInfo.getOwner().getId());
         System.out.println(flickrObj.toString());
+//        System.out.println("Save Posted: " + photoWithInfo.getDatePosted() + " Updated: " + photoWithInfo.getLastUpdate() + " Taken: " + photoWithInfo.getDateTaken());
         dbClient.save(flickrObj);
     }
+
 
     private Timestamp getLatestDateTaken() {
         try {
@@ -113,21 +113,23 @@ public class FlickrConsumer extends Thread {
     }
 
     public void saveLatestFlickrDateTaken(Photo latestFlickrPhoto) {
-//        System.out.println(latestFlickrPhoto.getDateTaken());
+
         JsonObject latestTimeObj = new JsonObject();
         String id = "latest_flickr";
         try {
             JsonObject latestDbObj = dbClient.find(JsonObject.class, id);
             String latestRev = latestDbObj.get("_rev").getAsString();
-            dbClient.remove(id,latestRev);
+            dbClient.remove(id, latestRev);
             latestTimeObj.addProperty("_id", id);
 //            latestTimeObj.addProperty("_rev", latestRev);
-            latestTimeObj.addProperty(id, latestFlickrPhoto.getDatePosted().getTime());
+            latestTimeObj.addProperty(id, latestFlickrPhoto.getLastUpdate().getTime() + 30000);
+//            System.out.println("Latest save Posted: " + latestFlickrPhoto.getDatePosted() + " Updated: " + latestFlickrPhoto.getLastUpdate() + " Taken: " + latestFlickrPhoto.getDateTaken());
+
             dbClient.save(latestTimeObj);
         } catch (NoDocumentException e) {
             System.out.println("No latest_flickr document found, creating.");
             latestTimeObj.addProperty("_id", id);
-            latestTimeObj.addProperty(id, latestFlickrPhoto.getDatePosted().getTime());
+            latestTimeObj.addProperty(id, latestFlickrPhoto.getLastUpdate().getTime() + 30000);
             dbClient.save(latestTimeObj);
         }
     }

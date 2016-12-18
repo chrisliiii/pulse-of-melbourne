@@ -28,6 +28,7 @@ public class InstagramConsumer extends Thread {
 
     public void run() {
 
+
         while (true) {
 
             try {
@@ -35,29 +36,30 @@ public class InstagramConsumer extends Thread {
                 Instagram instagram = new Instagram(token);
                 Random random = new Random();
 
-                while (true) {
-
-                    long dbLatest = getLatestDate();
+//                    long dbLatest = getLatestDate();
+                long dbLatest = getLatestViewDate();
+//                  long dbLatest = dbClient.view("latest_instagram/_view").descending(true).limit(1).queryForLong();
 //                  System.out.println("dblatest: "+dbLatest);
-//                  dblatest = dbClient.view("_latest_instagram/_view").descending(true).limit(1).queryForLong();
+                //Melbourne
+//                double latitude = -37.8136;
+//                double longitude = 144.9631;
+                //Sydney
+                double latitude = -33.8688;
+                double longitude = 151.2093;
+                MediaFeed feed = instagram.searchMedia(latitude, longitude, 5000);
 
-                    double latitude = -37.8136;
-                    double longitude = 144.9631;
+                List<MediaFeedData> list = feed.getData();
+//                    saveLatestInstagramDate(list.get(0));
 
-                    MediaFeed feed = instagram.searchMedia(latitude, longitude, 5000);
-
-                    List<MediaFeedData> list = feed.getData();
-                    saveLatestInstagramDate(list.get(0));
-
-                    for (MediaFeedData post : list) {
-                        long createdTime = 1000 * Long.parseLong(post.getCreatedTime());
-                        if (createdTime > dbLatest) {
-                            saveToDB(post, createdTime);
-                        }
+                for (MediaFeedData post : list) {
+                    long createdTime = 1000 * Long.parseLong(post.getCreatedTime());
+                    if (createdTime > dbLatest) {
+                        saveToDB(post, createdTime);
                     }
-                    //waits between 3-8 seconds, equation is nextInt(max-min+1)+min
-                    TimeUnit.SECONDS.sleep(random.nextInt(6) + 3);
                 }
+                //waits between 3-8 seconds, equation is nextInt(max-min+1)+min
+                TimeUnit.SECONDS.sleep(random.nextInt(8) + 5);
+
             } catch (InstagramException e) {
                 e.printStackTrace();
             } catch (InterruptedException e) {
@@ -68,22 +70,31 @@ public class InstagramConsumer extends Thread {
         }
     }
 
+    private long getLatestViewDate() {
+        try {
+            return dbClient.view("latest_instagram/_view").descending(true).limit(1).queryForLong();
+        } catch (NoDocumentException e) {
+            System.out.println("No latest_instagram document found, continuing");
+            return 0;
+        }
+    }
+
 
     private void saveToDB(MediaFeedData post, long createdTime) {
         Location location = post.getLocation();
 
         JsonArray coordinates = new JsonArray();
-        JsonObject flickrObj = new JsonObject();
+        JsonObject instagramObj = new JsonObject();
 
-        flickrObj.addProperty("timestamp", createdTime);
+        instagramObj.addProperty("timestamp", createdTime);
         JsonPrimitive postLatitude = new JsonPrimitive(location.getLatitude());
         JsonPrimitive postLongitude = new JsonPrimitive(location.getLongitude());
         coordinates.add(postLatitude);
         coordinates.add(postLongitude);
-        flickrObj.add("coordinates", coordinates);
-        flickrObj.addProperty("instagram", Long.parseLong(post.getUser().getId()));
-        System.out.println(flickrObj.toString());
-        dbClient.save(flickrObj);
+        instagramObj.add("coordinates", coordinates);
+        instagramObj.addProperty("instagram", Long.parseLong(post.getUser().getId()));
+        System.out.println(instagramObj.toString());
+        dbClient.save(instagramObj);
     }
 
 
@@ -106,7 +117,7 @@ public class InstagramConsumer extends Thread {
         try {
             JsonObject latestDbObj = dbClient.find(JsonObject.class, "latest_instagram");
             String latestRev = latestDbObj.get("_rev").getAsString();
-            dbClient.remove("latest_instagram",latestRev);
+            dbClient.remove("latest_instagram", latestRev);
             latestTimeObj.addProperty("_id", "latest_instagram");
 //            latestTimeObj.addProperty("_rev", latestRev);
             latestTimeObj.addProperty("latest_instagram", createdTime);

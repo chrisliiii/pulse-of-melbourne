@@ -10,7 +10,6 @@ import fi.foyt.foursquare.api.entities.CompactVenue;
 import fi.foyt.foursquare.api.entities.VenuesSearchResult;
 import org.lightcouch.CouchDbClient;
 
-import java.sql.Timestamp;
 import java.util.HashSet;
 
 public class FoursquareConsumer extends Thread {
@@ -32,8 +31,11 @@ public class FoursquareConsumer extends Thread {
         FoursquareApi foursquareApi = new FoursquareApi(clientId, secret, callbackUrl);
         long startTime = System.currentTimeMillis();
 
-        //Start Position is -37.768648, 144.906196, end is -37.85495584000002,145.0200039999997
-        double lat = -37.768648;
+//
+        //Sydney start position is -33.820142, 151.155146, end is -33.906449840000015,151.2689539999997
+        //Melbourne start position is -37.768648, 144.906196, end is -37.85495584000002,145.0200039999997
+//        double lat = -37.768648;
+        double lat = -33.820142;
         double lon;
 
         //400m offset
@@ -46,8 +48,12 @@ public class FoursquareConsumer extends Thread {
         // every 400 metres to find the number of people currently at them
         for (int i = 0; i < 25; i++) {
 
-            if (i % 2 == 0) lon = 144.906196;
-            else lon = 144.906196 - 0.00227616;
+            //Melbourne
+//            if (i % 2 == 0) lon = 144.906196;
+//            else lon = 144.906196 - 0.00227616;
+            //Sydney
+            if (i % 2 == 0) lon = 151.155146;
+            else lon = 151.155146 - 0.00227616;
 
             for (int j = 0; j < 25; j++) {
                 lon = lon + lonoffset;
@@ -79,9 +85,8 @@ public class FoursquareConsumer extends Thread {
                 } catch (FoursquareApiException e) {
                     e.printStackTrace();
                 }
-                lat = lat - latoffset;
-
             }
+            lat = lat - latoffset;
         }
         long estimatedTime = System.currentTimeMillis() - startTime;
         System.out.println(estimatedTime);

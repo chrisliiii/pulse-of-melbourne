@@ -41,8 +41,13 @@ public class TwitterConsumer extends Thread {
         // Define our endpoint: By default, delimited=length is set (we need this for our processor)
         // and stall warnings are on.
         StatusesFilterEndpoint endpoint = new StatusesFilterEndpoint();
-        Coordinate southwest = new Coordinate(144.3537, -38.2601);
-        Coordinate northeast = new Coordinate(145.3045, -37.3040);
+        //Melbourne
+//        Coordinate southwest = new Coordinate(144.9061, -37.8549);
+//        Coordinate northeast = new Coordinate(145.0200, -37.7686);
+        //Sydney
+        Coordinate southwest = new Coordinate(151.1551, -33.9064);
+        Coordinate northeast = new Coordinate(151.2689, -33.8201);
+
         Location melbourne = new Location(southwest, northeast);
         endpoint.locations(Lists.newArrayList(melbourne));
 

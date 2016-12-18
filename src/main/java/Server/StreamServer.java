@@ -20,7 +20,8 @@ public class StreamServer {
                 .setDbName("melbourne")
                 .setCreateDbIfNotExist(true)
                 .setProtocol("http")
-                .setHost("115.146.95.111")
+//                .setHost("115.146.95.111")
+                .setHost("localhost")
                 .setPort(5984)
 //                    .setUsername("admin")
 //                    .setPassword("admin")
@@ -65,11 +66,11 @@ public class StreamServer {
         final YoutubeConsumer youtubeConsumer = new YoutubeConsumer(youtubeDbClient, googleApiKey);
 
         twitterConsumer.start();
-        flickrConsumer.start();
         instagramConsumer.start();
         youtubeConsumer.start();
         ScheduledExecutorService ses = Executors.newSingleThreadScheduledExecutor();
         ses.scheduleAtFixedRate(foursquareConsumer, 0, 1, TimeUnit.HOURS);
+        ses.scheduleAtFixedRate(flickrConsumer, 0, 1, TimeUnit.HOURS);
 
     }
 }

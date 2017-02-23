@@ -1,6 +1,6 @@
 package Consumers;
 
-import DBConstructor.DBEntryConstructor;
+import FieldCreators.DBEntryConstructor;
 import FieldCreators.CoordinatesCreator;
 import FieldCreators.DateArrayCreator;
 import com.google.common.collect.Lists;
@@ -24,7 +24,9 @@ import java.util.concurrent.TimeUnit;
  * Created by geoffcunliffe on 17/02/2017.
  *
  * class TwitterConsumer employs Twitter's Java Hosebird Client (hbc)
- * to consume Twitter's Streaming API
+ * to consume Twitter's Streaming API. Messages are pushed by Twitter as a stream,
+ * rather than recurring queries.
+ * API : https://github.com/twitter/hbc
  */
 
 public class TwitterConsumer extends Thread {

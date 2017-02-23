@@ -1,8 +1,9 @@
 package Consumers;
 
+import FieldCreators.DBEntryConstructor;
+import FieldCreators.CoordinatesCreator;
 import FieldCreators.DateArrayCreator;
 import com.google.gson.JsonArray;
-import com.google.gson.JsonObject;
 import com.google.gson.JsonPrimitive;
 import fi.foyt.foursquare.api.FoursquareApi;
 import fi.foyt.foursquare.api.FoursquareApiException;
@@ -12,6 +13,17 @@ import fi.foyt.foursquare.api.entities.VenuesSearchResult;
 import org.lightcouch.CouchDbClient;
 
 import java.util.HashSet;
+
+/**
+ * Created by geoffcunliffe on 17/12/2017.
+ *
+ * Class FoursquareConsumer employs AtlisInc's Foursquare Api
+ * to query foursquare servers for current check-ins once every hour. A triangular mesh
+ * is used over a 10km x 10km area, querying venues every 400 metres, while avoiding
+ * duplicates by storing venue IDs in a hasSet. A single query cycle is completed in
+ * approximately 15-20 minutes
+ * API : https://github.com/AtlisInc/foursquare-api
+ */
 
 public class FoursquareConsumer extends Thread {
 
@@ -30,42 +42,46 @@ public class FoursquareConsumer extends Thread {
 
     public void run() {
 
+        //Create a new foursquare object to query server
         FoursquareApi foursquareApi = new FoursquareApi(clientId, secret, callbackUrl);
-        long startTime = System.currentTimeMillis();
 
         //Sydney start position is -33.820142, 151.155146, end is -33.906449840000015,151.2689539999997
         //Melbourne start position is -37.768648, 144.906196, end is -37.85495584000002,145.0200039999997
-//        double lat = -37.768648;
-
-        //400m offset, this will set up a triangular mesh
+        //400m offset
         double lonoffset = 0.00455232;
         double latoffset = 0.00359616;
 
+        //This HashSet stores unique venue ids each query cycle to ensure no duplication
         HashSet<String> idSet = new HashSet<String>();
 
         // These for loops set up a rectangular mesh over a 10km*10km area, checking the venues
         // every 400 metres to find the number of people currently at them
         for (int i = 0; i < 25; i++) {
-
+            //If the latitude value is on an even iteration, shift the longitude start over 400m
             if (i % 2 != 0) lon = lon - 0.00227616;
 
             for (int j = 0; j < 25; j++) {
                 lon = lon + lonoffset;
 
+                //ll = lat/lon string used for query parameters
                 String ll = Double.toString(lat) + "," + Double.toString(lon);
-//                System.out.println(ll);
 
                 try {
+                    //returns the closest 50 venues within a 230m radius. A 230m radius allows a small overlap due to the triangular mesh
                     Result<VenuesSearchResult> result = foursquareApi.venuesSearch(ll, null, null, null, null, 50, null, null, null, null, null, 230, null);
 
                     assert result != null;
                     if (result.getMeta().getCode() == 200) {
-                        // if query was ok we can finally we do something with the data
                         for (CompactVenue venue : result.getResult().getVenues()) {
                             long hereNowCount = venue.getHereNow().getCount();
                             String venueId = venue.getId();
+                            //If there are current checkins and this venue hasn't been encountered yet, save the number of checkins to the DB
                             if (hereNowCount > 0 && !idSet.contains(venueId)) {
-                                saveToDB(venue, hereNowCount);
+                                DBEntryConstructor dbEntry = getFields(venue);
+                                System.out.println(dbEntry.getdbObject().toString());
+                                for (int count = 0; count < hereNowCount; count++) {
+                                    dbClient.save(dbEntry.getdbObject());
+                                }
                             }
                             idSet.add(venueId);
                         }
@@ -82,31 +98,23 @@ public class FoursquareConsumer extends Thread {
             }
             lat = lat - latoffset;
         }
-        long estimatedTime = System.currentTimeMillis() - startTime;
-        System.out.println(estimatedTime);
     }
 
-    private void saveToDB(CompactVenue venue, long hereNowCount) {
-        JsonArray coordinates = new JsonArray();
-        JsonObject venueObj = new JsonObject();
-
+    //Method getFields extracts the required info from the passed in venue
+    private DBEntryConstructor getFields(CompactVenue venue) {
+        long timestamp = System.currentTimeMillis();
         DateArrayCreator dateArrayCreator = new DateArrayCreator(System.currentTimeMillis());
         JsonArray dateArray = dateArrayCreator.getDateArray();
 
-        JsonPrimitive postLatitude = new JsonPrimitive(venue.getLocation().getLat());
-        JsonPrimitive postLongitude = new JsonPrimitive(venue.getLocation().getLng());
-        coordinates.add(postLatitude);
-        coordinates.add(postLongitude);
+        JsonPrimitive latitude = new JsonPrimitive(venue.getLocation().getLat());
+        JsonPrimitive longitude = new JsonPrimitive(venue.getLocation().getLng());
+        CoordinatesCreator coordinatesCreator = new CoordinatesCreator(latitude,longitude);
+        JsonArray coordinates = coordinatesCreator.getCoordinates();
 
-        venueObj.addProperty("timestamp", System.currentTimeMillis());
-        venueObj.add("date", dateArray);
-        venueObj.add("coordinates", coordinates);
-        venueObj.addProperty("foursquare", venue.getId());
-        venueObj.addProperty("text", venue.getName());
-//        System.out.println(venueObj.toString());
-        for (int i = 0; i < hereNowCount; i++) {
-            dbClient.save(venueObj);
-        }
+        String user = venue.getId();
+        String text = venue.getName();
+
+        return new DBEntryConstructor(timestamp,dateArray,coordinates,"foursquare",user,text);
     }
 
 

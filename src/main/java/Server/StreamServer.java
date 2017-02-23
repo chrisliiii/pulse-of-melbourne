@@ -12,27 +12,13 @@ import java.util.concurrent.TimeUnit;
 
 public class StreamServer {
 
+    private static String city;
+    private static String dbHost;
+    private static int dbPort;
+
     public static void main(String[] args) {
 
-        String city = null, dbHost = null;
-        int dbPort = 5984;
-        String error = "Please use either \"melbourne\" or \"sydney\" and a database \"IP:Port\" as arguments";
-
-        try {
-            if (args[0].equals("melbourne") || args[0].equals("sydney") || args[0].equals("locations")) {
-                city = args[0];
-                dbHost = args[1].split(":")[0];
-                dbPort = Integer.parseInt(args[1].split(":")[1]);
-            }
-            else {
-                System.out.println(error);
-                System.exit(0);
-            }
-        } catch (ArrayIndexOutOfBoundsException e) {
-            System.out.println(error);
-            e.printStackTrace();
-            System.exit(0);
-        }
+        parseArgs(args);
 
         PropertyConfigurator.configure("log4j.properties");
 
@@ -113,12 +99,33 @@ public class StreamServer {
         final FoursquareConsumer foursquareConsumer = new FoursquareConsumer(foursquareDbClient, foursquareClientID, foursquareClientSecret, foursquareCallbackUrl, foursquareLatitude, foursquareLongitude);
         final YoutubeConsumer youtubeConsumer = new YoutubeConsumer(youtubeDbClient, googleApiKey, centerLatitude + "," + centerLongitude);
 
-//        twitterConsumer.start();
+        twitterConsumer.start();
         instagramConsumer.start();
-//        youtubeConsumer.start();
-        ScheduledExecutorService ses = Executors.newScheduledThreadPool(2);
-//        ses.scheduleAtFixedRate(foursquareConsumer, 0, 1, TimeUnit.HOURS);
+        ScheduledExecutorService ses = Executors.newScheduledThreadPool(3);
+        ses.scheduleAtFixedRate(foursquareConsumer, 0, 1, TimeUnit.HOURS);
         ses.scheduleAtFixedRate(flickrConsumer, 0, 1, TimeUnit.HOURS);
+        ses.scheduleAtFixedRate(youtubeConsumer, 0, 1, TimeUnit.HOURS);
 
+    }
+
+    private static void parseArgs(String[] args) {
+
+        String error = "Please use either \"melbourne\" or \"sydney\" and a database \"IP:Port\" as arguments";
+
+        try {
+            if (args[0].equals("melbourne") || args[0].equals("sydney") || args[0].equals("locations")) {
+                city = args[0];
+                dbHost = args[1].split(":")[0];
+                dbPort = Integer.parseInt(args[1].split(":")[1]);
+            }
+            else {
+                System.out.println(error);
+                System.exit(0);
+            }
+        } catch (ArrayIndexOutOfBoundsException e) {
+            System.out.println(error);
+            e.printStackTrace();
+            System.exit(0);
+        }
     }
 }

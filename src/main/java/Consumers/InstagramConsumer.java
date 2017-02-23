@@ -1,10 +1,9 @@
 package Consumers;
 
-import DBConstructor.DBEntryConstructor;
+import FieldCreators.DBEntryConstructor;
 import FieldCreators.CoordinatesCreator;
 import FieldCreators.DateArrayCreator;
 import com.google.gson.JsonArray;
-import com.google.gson.JsonObject;
 import com.google.gson.JsonPrimitive;
 import org.jinstagram.Instagram;
 import org.jinstagram.auth.model.Token;
@@ -21,10 +20,14 @@ import java.util.Random;
 import java.util.concurrent.TimeUnit;
 
 /**
- * Created by geoffcunliffe on 17/02/2017.
+ * Created by geoffcunliffe on 17/12/2017.
  *
  * class InstagramConsumer employs Sachin Handiekar's jinstagram Api
- * to query Instagram servers for the most recent posts
+ * to query Instagram servers for the most recent posts. A query is made to
+ * the Server, getting the 20 latest posts in a 5km radius from the city centre.
+ * After comparison to the most recent document in the database, the newer posts
+ * are saved.
+ * API : https://github.com/sachin-handiekar/jInstagram
  */
 
 public class InstagramConsumer extends Thread {
@@ -57,30 +60,34 @@ public class InstagramConsumer extends Thread {
 
             try {
 
-                //Chooses a random token to be used to access the Instagram servers
-                Random randomToken = new Random();
-                int num = randomToken.nextInt(3);
-                Token token = new Token(tokens[num],secrets[num]);
-
-                Instagram instagram = new Instagram(token);
                 Random random = new Random();
 
+                //Chooses a random token to be used to access the Instagram servers. This rotates the keys
+                //to avoid detection.
+                int num = random.nextInt(3);
+                Token token = new Token(tokens[num],secrets[num]);
+
+                //Create a new instagram object to initiate queries
+                Instagram instagram = new Instagram(token);
+
+                //Retrieve the latest DB instagram document for comparison
                 long dbLatest = getLatestViewDate();
 
+                //Query instagram for the latest posts
                 MediaFeed feed = instagram.searchMedia(latitude, longitude, 5000);
-
                 List<MediaFeedData> list = feed.getData();
 
+                //Iterates through the results and saves the newest posts
                 for (MediaFeedData post : list) {
                     long createdTime = 1000 * Long.parseLong(post.getCreatedTime());
                     if (createdTime > dbLatest) {
                         DBEntryConstructor dbEntry = getFields(post, createdTime);
                         System.out.println(dbEntry.getdbObject().toString());
                         dbClient.save(dbEntry.getdbObject());
-
                     }
                 }
-                //waits between 5-13 seconds, equation is nextInt(max-min+1)+min
+
+                //In order waits between 5-13 seconds, equation is nextInt(max-min+1)+min
                 TimeUnit.SECONDS.sleep(random.nextInt(8) + 5);
 
             } catch (InstagramException e) {
@@ -88,6 +95,7 @@ public class InstagramConsumer extends Thread {
             } catch (InterruptedException e) {
                 e.printStackTrace();
             }catch (IllegalStateException e) {
+                //These errors are fairly frequent due to a known bug with Instagram server-side
                 System.out.println("State exception, Error while reading response body");
             } catch (Exception e) {
                 e.printStackTrace();

@@ -1,5 +1,8 @@
 package Consumers;
 
+import DBConstructor.DBEntryConstructor;
+import FieldCreators.CoordinatesCreator;
+import FieldCreators.DateArrayCreator;
 import com.flickr4java.flickr.Flickr;
 import com.flickr4java.flickr.FlickrException;
 import com.flickr4java.flickr.REST;
@@ -12,125 +15,136 @@ import com.google.gson.JsonPrimitive;
 import org.lightcouch.CouchDbClient;
 import org.lightcouch.NoDocumentException;
 
-import java.sql.Timestamp;
 import java.util.Iterator;
-import java.util.concurrent.TimeUnit;
 
+/**
+ * Created by geoffcunliffe on 17/12/2017.
+ *
+ * Class FlickrConsumer uses the Flickr4Java API to access and retrieve the most recent flickr posts
+ */
 public class FlickrConsumer extends Thread {
 
-    private final String apikey;
-    private final String secret;
+    private final String apikey, secret, latitude, longitude;
     private CouchDbClient dbClient;
 
-    public FlickrConsumer(CouchDbClient dbClient, String apikey, String secret) {
+    public FlickrConsumer(CouchDbClient dbClient, String apikey, String secret, String latitude, String longitude) {
         this.dbClient = dbClient;
         this.apikey = apikey;
         this.secret = secret;
+        this.latitude = latitude;
+        this.longitude = longitude;
     }
 
     public void run() {
 
-        while (true) {
+        try {
 
-            try {
+            //Create a new flickr object using the keys
+            Flickr flickr = new Flickr(apikey, secret, new REST());
 
-                Flickr flickr = new Flickr(apikey, secret, new REST());
+            //This gets the most recent flickr retrieval timestamp from Couchdb if it exists.
+            //It is used to save only new posts
+            long dblatest = getLatestDateUpdated();
 
-                Timestamp dblatest = getLatestDateTaken();
+            //Sets the search parameters for the image search, specifying specific coordinates.
+            //The default search radius is 5km
+            SearchParameters searchParameters = new SearchParameters();
+            searchParameters.setAccuracy(6); //6 is region accuracy
+            searchParameters.setHasGeo(true);
+            searchParameters.setSort(0); //sorts by date posted descending
+            searchParameters.setLatitude(latitude);
+            searchParameters.setLongitude(longitude);
 
-                SearchParameters searchParameters = new SearchParameters();
-                searchParameters.setAccuracy(6); //6 is region accuracy
-                searchParameters.setHasGeo(true);
-                searchParameters.setSort(0); //sorts by date taken descending
-//                searchParameters.setMinUploadDate(dblatest);
-                //Sydney
-                searchParameters.setLatitude("-33.8688");
-                searchParameters.setLongitude("151.2093");
-                //Melbourne
-//                searchParameters.setLatitude("-37.8136");
-//                searchParameters.setLongitude("144.9631");
+            //This performs a query to the flickr server and returns a simple list of the most recent photos
+            //search arguments are parameters,results per query,page number
+            PhotoList<Photo> photoList = flickr.getPhotosInterface().search(searchParameters, 500, 0);
 
-                //search arguments are parameters,results per query,page number
-                PhotoList<Photo> photoList = flickr.getPhotosInterface().search(searchParameters, 500, 0);
-                Iterator itr = photoList.iterator();
+            Iterator itr = photoList.iterator();
 
-                if (!itr.hasNext()) {
-                    System.out.println("There aren't any results for your FLICKR query. Pausing 30 minutes");
-//                    System.out.println(searchParameters.getMinUploadDate());
-                    TimeUnit.MINUTES.sleep(30);
-                } else {
+            //Gets the most recent photo and updates the latest retrieval date
+            //in the CouchDB database for date checking purposes
+            Photo latestPhoto = flickr.getPhotosInterface().getInfo(photoList.get(0).getId(), secret);
+            saveLatestFlickrDatePosted(latestPhoto);
 
-                    Photo latestPhoto = flickr.getPhotosInterface().getInfo(photoList.get(0).getId(), secret);
-                    saveLatestFlickrDateTaken(latestPhoto);
-                    searchParameters.setMinUploadDate(new Timestamp(latestPhoto.getLastUpdate().getTime() + 30000));
+            //Saves the retrieved photos that are newer than the most recent retreival date
+            while (itr.hasNext()) {
+                Photo photo = (Photo) itr.next();
 
-                    while (itr.hasNext()) {
-                        Photo photo = (Photo) itr.next();
-                        Photo photoWithInfo = flickr.getPhotosInterface().getInfo(photo.getId(), secret);
+                //queries the flickr server again to retreive an individual photo's details
+                Photo photoWithInfo = flickr.getPhotosInterface().getInfo(photo.getId(), secret);
 
-                        saveToDB(photoWithInfo);
-
-                    }
+                //Compares the date to see if it's a newer object
+                if (photoWithInfo.getDatePosted().getTime() > dblatest) {
+                    DBEntryConstructor dbEntry = getFields(photoWithInfo);
+                    System.out.println(dbEntry.getdbObject().toString());
+                    dbClient.save(dbEntry.getdbObject());
                 }
-            } catch (InterruptedException e) {
-                e.printStackTrace();
-            } catch (FlickrException e) {
-                e.printStackTrace();
-            } catch (Exception e) {
-                System.out.println("There is something wrong with flickr, retrying");
-                e.printStackTrace();
+
+                else break;
             }
 
+
+        } catch (FlickrException e) {
+            e.printStackTrace();
+        } catch (Exception e) {
+            System.out.println("There is something wrong with flickr, retrying at next interval");
+            e.printStackTrace();
         }
     }
 
+    //Method getFields extracts the required info from the passed in retrieved post
+    private DBEntryConstructor getFields(Photo photoWithInfo) {
 
-    private void saveToDB(Photo photoWithInfo) {
-        JsonArray coordinates = new JsonArray();
-        JsonObject flickrObj = new JsonObject();
+        long timestamp = photoWithInfo.getDateTaken().getTime();
+        DateArrayCreator dateArrayCreator = new DateArrayCreator(photoWithInfo.getDateTaken().getTime());
+        JsonArray dateArray = dateArrayCreator.getDateArray();
 
-        flickrObj.addProperty("timestamp", photoWithInfo.getDateTaken().getTime());
         JsonPrimitive latitude = new JsonPrimitive(photoWithInfo.getGeoData().getLatitude());
         JsonPrimitive longitude = new JsonPrimitive(photoWithInfo.getGeoData().getLongitude());
-        coordinates.add(latitude);
-        coordinates.add(longitude);
-        flickrObj.add("coordinates", coordinates);
-        flickrObj.addProperty("flickr", photoWithInfo.getOwner().getId());
-        System.out.println(flickrObj.toString());
-//        System.out.println("Save Posted: " + photoWithInfo.getDatePosted() + " Updated: " + photoWithInfo.getLastUpdate() + " Taken: " + photoWithInfo.getDateTaken());
-        dbClient.save(flickrObj);
+        CoordinatesCreator coordinatesCreator = new CoordinatesCreator(latitude,longitude);
+        JsonArray coordinates = coordinatesCreator.getCoordinates();
+
+        String user = photoWithInfo.getOwner().getId();
+        String text;
+        if (!photoWithInfo.getTitle().isEmpty()) {
+            text = photoWithInfo.getTitle();
+        } else text = null;
+
+        return new DBEntryConstructor(timestamp,dateArray,coordinates,"flickr",user,text);
+
     }
 
-
-    private Timestamp getLatestDateTaken() {
+    //Method getLatestDateUpdated returns the timestamp of the newest flickr post from
+    //previous search results, stored in a "latest_flickr" document in CouchDb
+    private long getLatestDateUpdated() {
         try {
             JsonObject latestDbObj = dbClient.find(JsonObject.class, "latest_flickr");
-            return new Timestamp(latestDbObj.get("latest_flickr").getAsLong());
+            return latestDbObj.get("latest_flickr").getAsLong();
         } catch (NoDocumentException e) {
             System.out.println("No latest_flickr document found, continuing");
-            return new Timestamp(0);
+            return 0;
         }
     }
 
-    public void saveLatestFlickrDateTaken(Photo latestFlickrPhoto) {
+    //Method saveLatestFlickrDatePosted updates a "latest_flickr" object in the database
+    //to contain the most recent timestamp from the latest retrieval from the flickr server.
+    //This is then compared to new search results to only save the newest data
+    public void saveLatestFlickrDatePosted(Photo latestFlickrPhoto) {
 
         JsonObject latestTimeObj = new JsonObject();
         String id = "latest_flickr";
         try {
             JsonObject latestDbObj = dbClient.find(JsonObject.class, id);
-            String latestRev = latestDbObj.get("_rev").getAsString();
-            dbClient.remove(id, latestRev);
-            latestTimeObj.addProperty("_id", id);
-//            latestTimeObj.addProperty("_rev", latestRev);
-            latestTimeObj.addProperty(id, latestFlickrPhoto.getLastUpdate().getTime() + 30000);
-//            System.out.println("Latest save Posted: " + latestFlickrPhoto.getDatePosted() + " Updated: " + latestFlickrPhoto.getLastUpdate() + " Taken: " + latestFlickrPhoto.getDateTaken());
-
-            dbClient.save(latestTimeObj);
+            latestDbObj.remove(id);
+            latestDbObj.addProperty(id, latestFlickrPhoto.getDatePosted().getTime());
+            dbClient.update(latestDbObj);
         } catch (NoDocumentException e) {
             System.out.println("No latest_flickr document found, creating.");
             latestTimeObj.addProperty("_id", id);
-            latestTimeObj.addProperty(id, latestFlickrPhoto.getLastUpdate().getTime() + 30000);
+            latestTimeObj.addProperty(id, latestFlickrPhoto.getDatePosted().getTime());
             dbClient.save(latestTimeObj);
         }
     }
+
+
 }

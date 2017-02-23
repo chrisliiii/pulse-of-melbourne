@@ -1,5 +1,6 @@
 package Consumers;
 
+import FieldCreators.DateArrayCreator;
 import com.google.api.client.googleapis.json.GoogleJsonResponseException;
 import com.google.api.client.http.HttpRequest;
 import com.google.api.client.http.HttpRequestInitializer;
@@ -28,12 +29,13 @@ import java.util.concurrent.TimeUnit;
 
 public class YoutubeConsumer extends Thread {
 
-    private String apiKey;
+    private String apiKey, location;
     CouchDbClient dbClient;
 
-    public YoutubeConsumer(CouchDbClient dbClient, String apiKey) {
+    public YoutubeConsumer(CouchDbClient dbClient, String apiKey, String location) {
         this.dbClient = dbClient;
         this.apiKey = apiKey;
+        this.location = location;
     }
 
     public void run() {
@@ -43,25 +45,16 @@ public class YoutubeConsumer extends Thread {
             try {
 
                 YouTube youtube = new YouTube.Builder(new NetHttpTransport(), new JacksonFactory(), new HttpRequestInitializer() {
-                    //            @Override
-                    public void initialize(HttpRequest request) throws IOException {
-                    }
+                    public void initialize(HttpRequest request) throws IOException {}
                 }).setApplicationName("streamerater").build();
 
                 DateTime latestdate = getLatestDate();
 
                 // Define the API request for retrieving search results.
-                YouTube.Search.List search = null;
-
-                search = youtube.search().list("snippet");
+                YouTube.Search.List search = youtube.search().list("snippet");
                 search.setKey(apiKey);
                 search.setOrder("date");
-
-                //Melbourne
-//                search.setLocation("-38.2601,144.3537");
-                //Sydney
-                search.setLocation("-33.8688,151.2093");
-
+                search.setLocation(location);
                 search.setLocationRadius("5km");
                 search.setPublishedAfter(latestdate);
                 search.setType("video");
@@ -69,8 +62,6 @@ public class YoutubeConsumer extends Thread {
                 search.setFields("items(id/videoId)");
                 search.setMaxResults((long) 50);
 
-
-                assert search != null;
                 SearchListResponse searchResponse = search.execute();
                 List<SearchResult> searchResultList = searchResponse.getItems();
                 List<String> videoIds = new ArrayList<String>();
@@ -97,7 +88,7 @@ public class YoutubeConsumer extends Thread {
                     } else {
 
                         DateTime latest = new DateTime(videoList.get(0).getSnippet().getPublishedAt().getValue() + 1000);
-                        System.out.println(latest.getValue());
+//                        System.out.println(latest.getValue());
                         saveLatestDate(latest);
                         search.setPublishedAfter(latest);
                         saveToDB(videoList.iterator(), dbClient);
@@ -163,13 +154,19 @@ public class YoutubeConsumer extends Thread {
                 JsonArray coordinates = new JsonArray();
                 JsonObject videoObj = new JsonObject();
 
-                videoObj.addProperty("timestamp", dateTaken.getValue());
+                DateArrayCreator dateArrayCreator = new DateArrayCreator(dateTaken.getValue());
+                JsonArray dateArray = dateArrayCreator.getDateArray();
+
                 JsonPrimitive videoLatitude = new JsonPrimitive(location.getLatitude());
                 JsonPrimitive videoLongitude = new JsonPrimitive(location.getLongitude());
                 coordinates.add(videoLatitude);
                 coordinates.add(videoLongitude);
+
+                videoObj.addProperty("timestamp", dateTaken.getValue());
+                videoObj.add("date", dateArray);
                 videoObj.add("coordinates", coordinates);
                 videoObj.addProperty("youtube", singleVideo.getId());
+                videoObj.addProperty("text", singleVideo.getSnippet().getTitle());
                 System.out.println(videoObj.toString());
                 dbClient.save(videoObj);
 

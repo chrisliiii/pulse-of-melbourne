@@ -1,5 +1,8 @@
 package Consumers;
 
+import DBConstructor.DBEntryConstructor;
+import FieldCreators.CoordinatesCreator;
+import FieldCreators.DateArrayCreator;
 import com.google.common.collect.Lists;
 import com.google.gson.*;
 import com.twitter.hbc.ClientBuilder;
@@ -17,44 +20,48 @@ import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
 
+/**
+ * Created by geoffcunliffe on 17/02/2017.
+ *
+ * class TwitterConsumer employs Twitter's Java Hosebird Client (hbc)
+ * to consume Twitter's Streaming API
+ */
+
 public class TwitterConsumer extends Thread {
 
     private final String consumerKey;
     private final String consumerSecret;
     private final String token;
     private final String secret;
+    private final Coordinate southwest, northeast;
     private CouchDbClient dbClient;
 
-    public TwitterConsumer(CouchDbClient dbClient, String consumerKey, String consumerSecret, String token, String secret) {
+    //Constructor to assign appropriate Keys, Tokens, and Location
+    public TwitterConsumer(CouchDbClient dbClient, String consumerKey, String consumerSecret, String token, String secret, Coordinate southwest, Coordinate northeast) {
         this.dbClient = dbClient;
         this.consumerKey = consumerKey;
         this.consumerSecret = consumerSecret;
         this.token = token;
         this.secret = secret;
+        this.southwest = southwest;
+        this.northeast = northeast;
     }
 
     public void run() {
 
         // Create an appropriately sized blocking queue
-        BlockingQueue<String> queue = new LinkedBlockingQueue<String>(10000);
+        BlockingQueue<String> queue = new LinkedBlockingQueue<String>();
 
-        // Define our endpoint: By default, delimited=length is set (we need this for our processor)
-        // and stall warnings are on.
+        // Define endpoint
         StatusesFilterEndpoint endpoint = new StatusesFilterEndpoint();
-        //Melbourne
-//        Coordinate southwest = new Coordinate(144.9061, -37.8549);
-//        Coordinate northeast = new Coordinate(145.0200, -37.7686);
-        //Sydney
-        Coordinate southwest = new Coordinate(151.1551, -33.9064);
-        Coordinate northeast = new Coordinate(151.2689, -33.8201);
 
+        //Add Melbourne as the location to the endpoint using the passed in Polygon coordinates
         Location melbourne = new Location(southwest, northeast);
         endpoint.locations(Lists.newArrayList(melbourne));
 
         Authentication auth = new OAuth1(consumerKey, consumerSecret, token, secret);
-        //Authentication auth = new com.twitter.hbc.httpclient.auth.BasicAuth(username, password);
 
-        // Create a new BasicClient. By default gzip is enabled.
+        // Create a new BasicClient.
         BasicClient client = new ClientBuilder()
                 .name("Streamerater")
                 .hosts(Constants.STREAM_HOST)
@@ -65,54 +72,64 @@ public class TwitterConsumer extends Thread {
 
         // Establish a connection
         client.connect();
+
+        // Create a parser to parse the received msg
         JsonParser parser = new JsonParser();
 
-        // Do whatever needs to be done with messages
+        // Do what needs to be done with messages
         while (true) {
             if (client.isDone()) {
                 System.out.println("Client connection closed unexpectedly: " + client.getExitEvent().getMessage());
                 break;
             }
 
+            //Retreive messages from the stream
             String msg = null;
             try {
-                msg = queue.poll(30, TimeUnit.SECONDS);
+                msg = queue.poll(60, TimeUnit.SECONDS);
             } catch (InterruptedException e) {
                 e.printStackTrace();
             }
 
+            //Parse the message as a Json object, process it and save the DB object to the database
             if (msg == null) {
-                System.out.println("Did not receive a message in 30 seconds");
+                System.out.println("Did not receive a message in 60 seconds");
             } else {
+
                 JsonObject obj = (JsonObject) parser.parse(msg);
-                saveToDB(obj);
+
+                if (obj.has("coordinates") && !obj.get("coordinates").isJsonNull()) {
+                    DBEntryConstructor dbEntry = getFields(obj);
+                    System.out.println(dbEntry.getdbObject().toString());
+                    dbClient.save(dbEntry.getdbObject());
+                }
+
             }
         }
 
         client.stop();
         dbClient.shutdown();
 
-        // Print some stats
-        System.out.printf("The client read %d messages!\n", client.getStatsTracker().getNumMessages());
+
+    }
+    //Method getFields extracts the required info from the passed in retrieved post
+    private DBEntryConstructor getFields(JsonObject obj) {
+
+        Long timestamp = Long.parseLong(obj.get("timestamp_ms").toString().replaceAll("\"", ""));
+        String user = obj.getAsJsonObject("user").get("id").getAsString();
+        String text = obj.get("text").toString();
+
+        DateArrayCreator dateArrayCreator = new DateArrayCreator(timestamp);
+        JsonArray dateArray = dateArrayCreator.getDateArray();
+
+        JsonArray backwardsCoordinates = obj.getAsJsonObject("coordinates").get("coordinates").getAsJsonArray();
+        JsonPrimitive latitude = backwardsCoordinates.get(1).getAsJsonPrimitive();
+        JsonPrimitive longitude = backwardsCoordinates.get(0).getAsJsonPrimitive();
+        CoordinatesCreator coordinatesCreator = new CoordinatesCreator(latitude,longitude);
+        JsonArray coordinates = coordinatesCreator.getCoordinates();
+
+        return new DBEntryConstructor(timestamp,dateArray,coordinates,"twitter",user,text);
+
     }
 
-    private void saveToDB(JsonObject obj) {
-        if (obj.has("coordinates") && !obj.get("coordinates").isJsonNull()) {
-            JsonObject twitterObj = new JsonObject();
-            JsonArray coordinates = new JsonArray();
-
-            twitterObj.addProperty("timestamp", Long.parseLong(obj.get("timestamp_ms").toString().replaceAll("\"", "")));
-
-            JsonArray backwardsCoordinates = obj.getAsJsonObject("coordinates").get("coordinates").getAsJsonArray();
-            JsonPrimitive latitude = backwardsCoordinates.get(1).getAsJsonPrimitive();
-            JsonPrimitive longitude = backwardsCoordinates.get(0).getAsJsonPrimitive();
-            coordinates.add(latitude);
-            coordinates.add(longitude);
-
-            twitterObj.add("coordinates", coordinates);
-            twitterObj.add("twitter", obj.getAsJsonObject("user").get("id"));
-            System.out.println(twitterObj.toString());
-            dbClient.save(twitterObj);
-        }
-    }
 }

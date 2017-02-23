@@ -1,5 +1,6 @@
 package Consumers;
 
+import FieldCreators.DateArrayCreator;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonPrimitive;
@@ -14,16 +15,17 @@ import java.util.HashSet;
 
 public class FoursquareConsumer extends Thread {
 
-    private final String clientId;
-    private final String secret;
-    private final String callbackUrl;
+    private final String clientId, secret, callbackUrl;
+    double lat, lon;
     private CouchDbClient dbClient;
 
-    public FoursquareConsumer(CouchDbClient dbClient, String clientId, String secret, String callbackUrl) {
+    public FoursquareConsumer(CouchDbClient dbClient, String clientId, String secret, String callbackUrl, double foursquareLatitude, double foursquareLongitude) {
         this.dbClient = dbClient;
         this.clientId = clientId;
         this.secret = secret;
         this.callbackUrl = callbackUrl;
+        this.lat = foursquareLatitude;
+        this.lon = foursquareLongitude;
     }
 
     public void run() {
@@ -31,14 +33,11 @@ public class FoursquareConsumer extends Thread {
         FoursquareApi foursquareApi = new FoursquareApi(clientId, secret, callbackUrl);
         long startTime = System.currentTimeMillis();
 
-//
         //Sydney start position is -33.820142, 151.155146, end is -33.906449840000015,151.2689539999997
         //Melbourne start position is -37.768648, 144.906196, end is -37.85495584000002,145.0200039999997
 //        double lat = -37.768648;
-        double lat = -33.820142;
-        double lon;
 
-        //400m offset
+        //400m offset, this will set up a triangular mesh
         double lonoffset = 0.00455232;
         double latoffset = 0.00359616;
 
@@ -48,12 +47,7 @@ public class FoursquareConsumer extends Thread {
         // every 400 metres to find the number of people currently at them
         for (int i = 0; i < 25; i++) {
 
-            //Melbourne
-//            if (i % 2 == 0) lon = 144.906196;
-//            else lon = 144.906196 - 0.00227616;
-            //Sydney
-            if (i % 2 == 0) lon = 151.155146;
-            else lon = 151.155146 - 0.00227616;
+            if (i % 2 != 0) lon = lon - 0.00227616;
 
             for (int j = 0; j < 25; j++) {
                 lon = lon + lonoffset;
@@ -91,18 +85,25 @@ public class FoursquareConsumer extends Thread {
         long estimatedTime = System.currentTimeMillis() - startTime;
         System.out.println(estimatedTime);
     }
+
     private void saveToDB(CompactVenue venue, long hereNowCount) {
         JsonArray coordinates = new JsonArray();
         JsonObject venueObj = new JsonObject();
 
-        venueObj.addProperty("timestamp", System.currentTimeMillis());
+        DateArrayCreator dateArrayCreator = new DateArrayCreator(System.currentTimeMillis());
+        JsonArray dateArray = dateArrayCreator.getDateArray();
+
         JsonPrimitive postLatitude = new JsonPrimitive(venue.getLocation().getLat());
         JsonPrimitive postLongitude = new JsonPrimitive(venue.getLocation().getLng());
         coordinates.add(postLatitude);
         coordinates.add(postLongitude);
+
+        venueObj.addProperty("timestamp", System.currentTimeMillis());
+        venueObj.add("date", dateArray);
         venueObj.add("coordinates", coordinates);
         venueObj.addProperty("foursquare", venue.getId());
-        System.out.println(venueObj.toString());
+        venueObj.addProperty("text", venue.getName());
+//        System.out.println(venueObj.toString());
         for (int i = 0; i < hereNowCount; i++) {
             dbClient.save(venueObj);
         }

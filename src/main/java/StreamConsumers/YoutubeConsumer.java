@@ -1,9 +1,10 @@
-package Consumers;
+package StreamConsumers;
 
-import DBHandler.LatestDocumentHandler;
+import DBDocumentHandlers.LatestDocumentHandler;
 import FieldCreators.CoordinatesCreator;
 import FieldCreators.DBEntryConstructor;
 import FieldCreators.DateArrayCreator;
+import KeyHandlers.YoutubeKeyHandler;
 import com.google.api.client.googleapis.json.GoogleJsonResponseException;
 import com.google.api.client.http.HttpRequest;
 import com.google.api.client.http.HttpRequestInitializer;
@@ -18,10 +19,9 @@ import com.google.api.services.youtube.model.SearchResult;
 import com.google.api.services.youtube.model.Video;
 import com.google.api.services.youtube.model.VideoListResponse;
 import com.google.gson.JsonArray;
-import com.google.gson.JsonObject;
 import com.google.gson.JsonPrimitive;
 import org.lightcouch.CouchDbClient;
-import org.lightcouch.NoDocumentException;
+import org.lightcouch.CouchDbProperties;
 
 import java.io.IOException;
 import java.util.ArrayList;
@@ -29,51 +29,67 @@ import java.util.Iterator;
 import java.util.List;
 
 /**
- * Created by geoffcunliffe on 17/12/2017.
- * <p/>
  * Class YoutubeConsumer employs Google's Youtube Api to retrieve the most recent youtube
- * videos with geo data. A query is made to the Server, getting the 50 latest videos
+ * videos with geo data. A query is made to the StreamServer, getting the 50 latest videos
  * within a city within a 5km radius. After comparison to the most recent document
  * in the database, the newer posts are saved. Due to the presence os geo-tags being
- * uncommon on videos, there are seldom new results, and a query is done once every hour.
+ * uncommon on videos, there are seldom new results, and a query is done once every hour.<p>
  * API : https://developers.google.com/youtube/v3/
  */
 public class YoutubeConsumer extends Thread {
 
-    private String apiKey, location;
-    CouchDbClient dbClient;
+    private String location;
+    private CouchDbClient dbClient;
+    private YoutubeKeyHandler youtubeKeyHandler;
+    private final long MAXRESULTS = 50;
+    YouTube youtube;
 
-    public YoutubeConsumer(CouchDbClient dbClient, String apiKey, String location) {
-        this.dbClient = dbClient;
-        this.apiKey = apiKey;
-        this.location = location;
+    /**
+     *  Constructs a consumer object, setting the location, database client, and retrieving the API key(s)
+     *  @param  KEYFILE the filename of the file containing all API keys
+     *  @param  city the name of the city from which to query posts
+     *  @param  properties CouchDB client properties
+     */
+    public YoutubeConsumer(String KEYFILE, String city, CouchDbProperties properties) {
+        if (city.equals("melbourne")) {
+            this.location = "-37.8136" + "," + "144.9631";
+        } else {
+            this.location = "-33.8688" + "," + "151.2093";
+        }
+        this.dbClient = new CouchDbClient(properties);
+        youtubeKeyHandler = new YoutubeKeyHandler(KEYFILE, city);
     }
 
+    /**
+     *  Starts the consumer thread to retrieve latest posts
+     */
     public void run() {
 
         try {
 
             //Create a new youtube query object
-            YouTube youtube = new YouTube.Builder(new NetHttpTransport(), new JacksonFactory(), new HttpRequestInitializer() {
+            youtube = new YouTube.Builder(new NetHttpTransport(),
+                    new JacksonFactory(),
+                    new HttpRequestInitializer() {
                 public void initialize(HttpRequest request) throws IOException {
                 }
             }).setApplicationName("streamerater").build();
 
             //Retreive the latest youtube document's timestamp from the DB
-            LatestDocumentHandler handler = new LatestDocumentHandler(dbClient);
+            LatestDocumentHandler latestDocumentHandler = new LatestDocumentHandler(dbClient);
             String latestID = "latest_youtube";
-            DateTime latestdate = handler.getLatestDate(latestID);
+            DateTime latestdate = latestDocumentHandler.getLatestDate(latestID);
 
             // Define the API request for retrieving search results.
             YouTube.Search.List search = youtube.search().list("snippet");
-            search.setKey(apiKey);
+            search.setKey(youtubeKeyHandler.getYoutubeApiKeyApiKey());
             search.setOrder("date");
             search.setLocation(location);
             search.setLocationRadius("5km");
             search.setPublishedAfter(latestdate); //Will only get results after the latest DB date
             search.setType("video");
             search.setFields("items(id/videoId)");
-            search.setMaxResults((long) 50);
+            search.setMaxResults(MAXRESULTS);
 
             //An initial query returns a simple results of video IDs
             SearchListResponse searchResponse = search.execute();
@@ -92,7 +108,7 @@ public class YoutubeConsumer extends Thread {
                 // Call the YouTube Data API's youtube.videos.list method to
                 // retrieve the resources that represent the specified videos.
                 YouTube.Videos.List listVideosRequest = youtube.videos().list("snippet, recordingDetails").setId(videoId);
-                listVideosRequest.setKey(apiKey);
+                listVideosRequest.setKey(youtubeKeyHandler.getYoutubeApiKeyApiKey());
                 VideoListResponse listResponse = listVideosRequest.execute();
 
                 List<Video> videoList = listResponse.getItems();
@@ -103,7 +119,7 @@ public class YoutubeConsumer extends Thread {
                 } else {
                     //Save the newest date for future queries
                     DateTime latest = new DateTime(videoList.get(0).getSnippet().getPublishedAt().getValue() + 1000);
-                    handler.saveLatestDate(latestID,latest.getValue());
+                    latestDocumentHandler.saveLatestDate(latestID,latest.getValue());
 
                     Iterator<Video> iteratorVideoResults = videoList.iterator();
 
@@ -113,7 +129,7 @@ public class YoutubeConsumer extends Thread {
                         DateTime dateTaken = video.getRecordingDetails().getRecordingDate();
                         if (dateTaken != null) {
                             DBEntryConstructor dbEntry = getFields(video, dateTaken);
-                            System.out.println(dbEntry.getdbObject().toString());
+//                            System.out.println(dbEntry.getdbObject().toString());
                             dbClient.save(dbEntry.getdbObject());
                         }
                     }
@@ -121,13 +137,15 @@ public class YoutubeConsumer extends Thread {
 
             }
         } catch (GoogleJsonResponseException e) {
-            System.err.println("There was a service error: " + e.getDetails().getCode() + " : "
+            System.err.println("There was a YouTube service error: " + e.getDetails().getCode() + " : "
                     + e.getDetails().getMessage());
         } catch (IOException e) {
-            System.err.println("There was an IO error: " + e.getCause() + " : " + e.getMessage());
+            System.err.println("There was a YouTube IO error: " + e.getCause() + " : " + e.getMessage());
         } catch (Exception e) {
             e.printStackTrace();
         }
+
+        dbClient.shutdown();
 
     }
 

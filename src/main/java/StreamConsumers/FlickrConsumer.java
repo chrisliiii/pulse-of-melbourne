@@ -1,9 +1,10 @@
-package Consumers;
+package StreamConsumers;
 
-import DBHandler.LatestDocumentHandler;
-import FieldCreators.DBEntryConstructor;
+import DBDocumentHandlers.LatestDocumentHandler;
 import FieldCreators.CoordinatesCreator;
+import FieldCreators.DBEntryConstructor;
 import FieldCreators.DateArrayCreator;
+import KeyHandlers.FlickrKeyHandler;
 import com.flickr4java.flickr.Flickr;
 import com.flickr4java.flickr.FlickrException;
 import com.flickr4java.flickr.REST;
@@ -11,42 +12,55 @@ import com.flickr4java.flickr.photos.Photo;
 import com.flickr4java.flickr.photos.PhotoList;
 import com.flickr4java.flickr.photos.SearchParameters;
 import com.google.gson.JsonArray;
-import com.google.gson.JsonObject;
 import com.google.gson.JsonPrimitive;
 import org.lightcouch.CouchDbClient;
-import org.lightcouch.NoDocumentException;
+import org.lightcouch.CouchDbProperties;
 
 import java.util.Iterator;
 
 /**
- * Created by geoffcunliffe on 17/12/2017.
- *
  * Class FlickrConsumer uses the Flickr4Java API to access and retrieve the most
- * recent flickr posts. A query is made to the Server, getting the 20 latest posts
+ * recent flickr posts. A query is made to the StreamServer, getting the 20 latest posts
  * within a city with regional accuracy. After comparison to the most recent document
- * in the database, the newer posts are saved.
+ * in the database, the newer posts are saved.<p>
  * API : https://github.com/boncey/Flickr4Java
  */
 
 public class FlickrConsumer extends Thread {
 
-    private final String apikey, secret, latitude, longitude;
+    private final String latitude, longitude;
     private CouchDbClient dbClient;
+    private FlickrKeyHandler flickrKeyHandler;
+    private Flickr flickr;
 
-    public FlickrConsumer(CouchDbClient dbClient, String apikey, String secret, String latitude, String longitude) {
-        this.dbClient = dbClient;
-        this.apikey = apikey;
-        this.secret = secret;
-        this.latitude = latitude;
-        this.longitude = longitude;
+    /**
+     *  Constructs a consumer object, setting the location, database client, and retrieving the API key(s)
+     *  @param  KEYFILE the filename of the file containing all API keys
+     *  @param  city the name of the city from which to query posts
+     *  @param  properties CouchDB client properties
+     */
+    public FlickrConsumer(String KEYFILE, String city, CouchDbProperties properties) {
+        if (city.equals("melbourne")) {
+            this.latitude = "-37.8136";
+            this.longitude = "144.9631";
+        } else {
+            this.latitude = "-33.8688";
+            this.longitude = "151.2093";
+        }
+
+        this.flickrKeyHandler = new FlickrKeyHandler(KEYFILE);
+        this.dbClient = new CouchDbClient(properties);
     }
 
+    /**
+     *  Starts the consumer thread to retrieve latest posts
+     */
     public void run() {
 
         try {
 
             //Create a new flickr object using the keys
-            Flickr flickr = new Flickr(apikey, secret, new REST());
+            flickr = new Flickr(flickrKeyHandler.getFlickrApiKey(), flickrKeyHandler.getFlickrSecret(), new REST());
 
             //This gets the most recent flickr retrieval timestamp from Couchdb if it exists.
             //It is used to save only new posts
@@ -71,7 +85,7 @@ public class FlickrConsumer extends Thread {
 
             //Gets the most recent photo and updates the latest retrieval date
             //in the CouchDB database for date checking purposes
-            Photo latestPhoto = flickr.getPhotosInterface().getInfo(photoList.get(0).getId(), secret);
+            Photo latestPhoto = flickr.getPhotosInterface().getInfo(photoList.get(0).getId(), flickrKeyHandler.getFlickrSecret());
             handler.saveLatestDate(latestID,latestPhoto.getDatePosted().getTime());
 
             //Saves the retrieved photos that are newer than the most recent retreival date
@@ -79,12 +93,12 @@ public class FlickrConsumer extends Thread {
                 Photo photo = (Photo) itr.next();
 
                 //queries the flickr server again to retreive an individual photo's details
-                Photo photoWithInfo = flickr.getPhotosInterface().getInfo(photo.getId(), secret);
+                Photo photoWithInfo = flickr.getPhotosInterface().getInfo(photo.getId(), flickrKeyHandler.getFlickrSecret());
 
                 //Compares the date to see if it's a newer object
                 if (photoWithInfo.getDatePosted().getTime() > dbLatest) {
                     DBEntryConstructor dbEntry = getFields(photoWithInfo);
-                    System.out.println(dbEntry.getdbObject().toString());
+//                    System.out.println(dbEntry.getdbObject().toString());
                     dbClient.save(dbEntry.getdbObject());
                 }
 
@@ -98,6 +112,9 @@ public class FlickrConsumer extends Thread {
             System.out.println("There is something wrong with flickr, retrying at next interval");
             e.printStackTrace();
         }
+
+        dbClient.shutdown();
+
     }
 
     //Method getFields extracts the required info from the passed in retrieved post

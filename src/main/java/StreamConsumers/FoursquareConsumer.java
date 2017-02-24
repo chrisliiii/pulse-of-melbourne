@@ -1,8 +1,9 @@
-package Consumers;
+package StreamConsumers;
 
 import FieldCreators.DBEntryConstructor;
 import FieldCreators.CoordinatesCreator;
 import FieldCreators.DateArrayCreator;
+import KeyHandlers.FoursquareKeyHandler;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonPrimitive;
 import fi.foyt.foursquare.api.FoursquareApi;
@@ -11,39 +12,53 @@ import fi.foyt.foursquare.api.Result;
 import fi.foyt.foursquare.api.entities.CompactVenue;
 import fi.foyt.foursquare.api.entities.VenuesSearchResult;
 import org.lightcouch.CouchDbClient;
+import org.lightcouch.CouchDbProperties;
 
 import java.util.HashSet;
 
 /**
- * Created by geoffcunliffe on 17/12/2017.
- *
  * Class FoursquareConsumer employs AtlisInc's Foursquare Api
  * to query foursquare servers for current check-ins once every hour. A triangular mesh
  * is used over a 10km x 10km area, querying venues every 400 metres, while avoiding
  * duplicates by storing venue IDs in a hasSet. A single query cycle is completed in
- * approximately 15-20 minutes
+ * approximately 15-20 minutes.<p>
  * API : https://github.com/AtlisInc/foursquare-api
  */
 
 public class FoursquareConsumer extends Thread {
 
-    private final String clientId, secret, callbackUrl;
-    double lat, lon;
+    private double lat, lon;
     private CouchDbClient dbClient;
+    private FoursquareKeyHandler foursquareKeyHandler;
 
-    public FoursquareConsumer(CouchDbClient dbClient, String clientId, String secret, String callbackUrl, double foursquareLatitude, double foursquareLongitude) {
-        this.dbClient = dbClient;
-        this.clientId = clientId;
-        this.secret = secret;
-        this.callbackUrl = callbackUrl;
-        this.lat = foursquareLatitude;
-        this.lon = foursquareLongitude;
+    /**
+     *  Constructs a consumer object, setting the location, database client, and retrieving the API key(s)
+     *  @param  KEYFILE the filename of the file containing all API keys
+     *  @param  city the name of the city from which to query posts
+     *  @param  properties CouchDB client properties
+     */
+    public FoursquareConsumer(String KEYFILE, String city, CouchDbProperties properties) {
+
+        if (city.equals("melbourne")) {             //Melbourne
+            this.lat = -37.768648;
+            this.lon = 144.906196;
+        } else {
+            this.lat = -33.820142;
+            this.lon = 151.155146;
+        }
+        this.foursquareKeyHandler = new FoursquareKeyHandler(KEYFILE);
+        this.dbClient = new CouchDbClient(properties);
     }
 
+    /**
+     *  Starts the consumer thread to retrieve latest posts
+     */
     public void run() {
 
         //Create a new foursquare object to query server
-        FoursquareApi foursquareApi = new FoursquareApi(clientId, secret, callbackUrl);
+        FoursquareApi foursquareApi = new FoursquareApi(foursquareKeyHandler.getFoursquareClientID(),
+                foursquareKeyHandler.getFoursquareClientSecret(),
+                foursquareKeyHandler.getFoursquareCallbackUrl());
 
         //Sydney start position is -33.820142, 151.155146, end is -33.906449840000015,151.2689539999997
         //Melbourne start position is -37.768648, 144.906196, end is -37.85495584000002,145.0200039999997
@@ -78,7 +93,7 @@ public class FoursquareConsumer extends Thread {
                             //If there are current checkins and this venue hasn't been encountered yet, save the number of checkins to the DB
                             if (hereNowCount > 0 && !idSet.contains(venueId)) {
                                 DBEntryConstructor dbEntry = getFields(venue);
-                                System.out.println(dbEntry.getdbObject().toString());
+//                                System.out.println(dbEntry.getdbObject().toString());
                                 for (int count = 0; count < hereNowCount; count++) {
                                     dbClient.save(dbEntry.getdbObject());
                                 }
@@ -98,9 +113,11 @@ public class FoursquareConsumer extends Thread {
             }
             lat = lat - latoffset;
         }
+
+        dbClient.shutdown();
     }
 
-    //Method getFields extracts the required info from the passed in venue
+    // Method getFields extracts the required info from the passed in venue
     private DBEntryConstructor getFields(CompactVenue venue) {
         long timestamp = System.currentTimeMillis();
         DateArrayCreator dateArrayCreator = new DateArrayCreator(System.currentTimeMillis());
@@ -108,13 +125,13 @@ public class FoursquareConsumer extends Thread {
 
         JsonPrimitive latitude = new JsonPrimitive(venue.getLocation().getLat());
         JsonPrimitive longitude = new JsonPrimitive(venue.getLocation().getLng());
-        CoordinatesCreator coordinatesCreator = new CoordinatesCreator(latitude,longitude);
+        CoordinatesCreator coordinatesCreator = new CoordinatesCreator(latitude, longitude);
         JsonArray coordinates = coordinatesCreator.getCoordinates();
 
         String user = venue.getId();
         String text = venue.getName();
 
-        return new DBEntryConstructor(timestamp,dateArray,coordinates,"foursquare",user,text);
+        return new DBEntryConstructor(timestamp, dateArray, coordinates, "foursquare", user, text);
     }
 
 

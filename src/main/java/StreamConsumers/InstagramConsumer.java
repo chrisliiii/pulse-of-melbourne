@@ -1,8 +1,9 @@
-package Consumers;
+package StreamConsumers;
 
 import FieldCreators.DBEntryConstructor;
 import FieldCreators.CoordinatesCreator;
 import FieldCreators.DateArrayCreator;
+import KeyHandlers.InstagramKeyHandler;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonPrimitive;
 import org.jinstagram.Instagram;
@@ -12,6 +13,7 @@ import org.jinstagram.entity.users.feed.MediaFeed;
 import org.jinstagram.entity.users.feed.MediaFeedData;
 import org.jinstagram.exceptions.InstagramException;
 import org.lightcouch.CouchDbClient;
+import org.lightcouch.CouchDbProperties;
 import org.lightcouch.NoDocumentException;
 
 import java.text.ParseException;
@@ -20,41 +22,42 @@ import java.util.Random;
 import java.util.concurrent.TimeUnit;
 
 /**
- * Created by geoffcunliffe on 17/12/2017.
- *
- * class InstagramConsumer employs Sachin Handiekar's jinstagram Api
+ * Class InstagramConsumer employs Sachin Handiekar's jinstagram Api
  * to query Instagram servers for the most recent posts. A query is made to
- * the Server, getting the 20 latest posts in a 5km radius from the city centre.
+ * the StreamServer, getting the 20 latest posts in a 5km radius from the city centre.
  * After comparison to the most recent document in the database, the newer posts
- * are saved.
+ * are saved. <p>
  * API : https://github.com/sachin-handiekar/jInstagram
  */
 
 public class InstagramConsumer extends Thread {
 
     private CouchDbClient dbClient;
-    double latitude, longitude;
+    private double latitude, longitude;
+    private InstagramKeyHandler instagramKeyHandler;
 
-    public InstagramConsumer(CouchDbClient dbClient, String centerLatitude, String centerLongitude) {
-        this.dbClient = dbClient;
-        this.latitude = Double.parseDouble(centerLatitude);
-        this.longitude = Double.parseDouble(centerLongitude);
+    /**
+     *  Constructs a consumer object, setting the location, database client, and retrieving the API key(s)
+     *  @param  KEYFILE the filename of the file containing all API keys
+     *  @param  city the name of the city from which to query posts
+     *  @param  properties CouchDB client properties
+     */
+    public InstagramConsumer(String KEYFILE, String city, CouchDbProperties properties) {
+        if (city.equals("melbourne")) {
+            this.latitude = -37.8136;
+            this.longitude = 144.9631;
+        } else {
+            this.latitude = -33.8688;
+            this.longitude = 151.2093;
+        }
+        this.dbClient = new CouchDbClient(properties);
+        instagramKeyHandler = new InstagramKeyHandler(KEYFILE);
     }
 
+    /**
+     *  Starts the consumer thread to retrieve latest posts
+     */
     public void run() {
-
-        //Sets the tokens to be rotated for queries
-        String[] tokens = new String[3];
-        String[] secrets = new String[3];
-
-        tokens[0] = "1447623382.e029fea.74bded2cf2a549899d9838a4b81ad63f";
-        tokens[1] = "4281114253.e029fea.2fde1b2df2994f76a73196e9534e6917";
-        tokens[2] = "4280694870.e029fea.392feabf42114199995a02eaad8c4cd8";
-
-        secrets[0] = "46e8510efdb94050b9528ce92be5e77f";
-        secrets[1] = "a5e48d8e3466442b9b8e80e2f1e8a0a2";
-        secrets[2] = "f2e5a8ded2ac4bf79b721d7e140bb5ca";
-
 
         while (true) {
 
@@ -65,7 +68,8 @@ public class InstagramConsumer extends Thread {
                 //Chooses a random token to be used to access the Instagram servers. This rotates the keys
                 //to avoid detection.
                 int num = random.nextInt(3);
-                Token token = new Token(tokens[num],secrets[num]);
+                Token token = new Token(instagramKeyHandler.getTokens()[num],
+                        instagramKeyHandler.getSecrets()[num]);
 
                 //Create a new instagram object to initiate queries
                 Instagram instagram = new Instagram(token);
@@ -82,12 +86,13 @@ public class InstagramConsumer extends Thread {
                     long createdTime = 1000 * Long.parseLong(post.getCreatedTime());
                     if (createdTime > dbLatest) {
                         DBEntryConstructor dbEntry = getFields(post, createdTime);
-                        System.out.println(dbEntry.getdbObject().toString());
+//                        System.out.println(dbEntry.getdbObject().toString());
                         dbClient.save(dbEntry.getdbObject());
                     }
                 }
 
-                //In order waits between 5-13 seconds, equation is nextInt(max-min+1)+min
+                // In order for access to appear random, the thread waits between 6-13 seconds at the end of
+                // each while loop iteration. Equation is nextInt(max-min+1)+min
                 TimeUnit.SECONDS.sleep(random.nextInt(8) + 5);
 
             } catch (InstagramException e) {
@@ -95,12 +100,13 @@ public class InstagramConsumer extends Thread {
             } catch (InterruptedException e) {
                 e.printStackTrace();
             }catch (IllegalStateException e) {
-                //These errors are fairly frequent due to a known bug with Instagram server-side
+                //These errors are fairly frequent due to a known bug at Instagram server-side
                 System.out.println("State exception, Error while reading response body");
             } catch (Exception e) {
                 e.printStackTrace();
             }
         }
+
     }
 
     //Method getLatestViewDate uses a Couchdb view to retreive the timestamp of the most recent instagram post

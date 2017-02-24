@@ -1,8 +1,9 @@
-package Consumers;
+package StreamConsumers;
 
 import FieldCreators.DBEntryConstructor;
 import FieldCreators.CoordinatesCreator;
 import FieldCreators.DateArrayCreator;
+import KeyHandlers.TwitterKeyHandler;
 import com.google.common.collect.Lists;
 import com.google.gson.*;
 import com.twitter.hbc.ClientBuilder;
@@ -15,43 +16,51 @@ import com.twitter.hbc.httpclient.BasicClient;
 import com.twitter.hbc.httpclient.auth.Authentication;
 import com.twitter.hbc.httpclient.auth.OAuth1;
 import org.lightcouch.CouchDbClient;
+import org.lightcouch.CouchDbProperties;
 
+import java.io.*;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
 
 /**
- * Created by geoffcunliffe on 17/02/2017.
- *
- * class TwitterConsumer employs Twitter's Java Hosebird Client (hbc)
+ * Class TwitterConsumer employs Twitter's Java Hosebird Client (hbc)
  * to consume Twitter's Streaming API. Messages are pushed by Twitter as a stream,
- * rather than recurring queries.
+ * rather than recurring queries.<p>
  * API : https://github.com/twitter/hbc
  */
 
 public class TwitterConsumer extends Thread {
 
-    private final String consumerKey;
-    private final String consumerSecret;
-    private final String token;
-    private final String secret;
-    private final Coordinate southwest, northeast;
     private CouchDbClient dbClient;
+    private Coordinate southwest, northeast;
+    private TwitterKeyHandler twitterKeyHandler;
 
-    //Constructor to assign appropriate Keys, Tokens, and Location
-    public TwitterConsumer(CouchDbClient dbClient, String consumerKey, String consumerSecret, String token, String secret, Coordinate southwest, Coordinate northeast) {
-        this.dbClient = dbClient;
-        this.consumerKey = consumerKey;
-        this.consumerSecret = consumerSecret;
-        this.token = token;
-        this.secret = secret;
-        this.southwest = southwest;
-        this.northeast = northeast;
+    /**
+     *  Constructs a consumer object, setting the location, database client, and retrieving the API key(s)
+     *  @param  KEYFILE the filename of the file containing all API keys
+     *  @param  city the name of the city from which to query posts
+     *  @param  properties CouchDB client properties
+     */
+    public TwitterConsumer(String KEYFILE, String city, CouchDbProperties properties) throws IOException {
+
+        if (city.equals("melbourne")) {
+            this.southwest = new Coordinate(144.9061, -37.8549);
+            this.northeast = new Coordinate(145.0200, -37.7686);
+        } else {
+            this.southwest = new Coordinate(151.1551, -33.9064);
+            this.northeast = new Coordinate(151.2689, -33.8201);
+        }
+        this.twitterKeyHandler = new TwitterKeyHandler(KEYFILE,city);
+        this.dbClient = new CouchDbClient(properties);
     }
 
+    /**
+     *  Starts the consumer thread to retrieve latest posts
+     */
     public void run() {
 
-        // Create an appropriately sized blocking queue
+        // Create a blocking queue
         BlockingQueue<String> queue = new LinkedBlockingQueue<String>();
 
         // Define endpoint
@@ -61,7 +70,10 @@ public class TwitterConsumer extends Thread {
         Location melbourne = new Location(southwest, northeast);
         endpoint.locations(Lists.newArrayList(melbourne));
 
-        Authentication auth = new OAuth1(consumerKey, consumerSecret, token, secret);
+        Authentication auth = new OAuth1(twitterKeyHandler.getTwitterConsumerKey(),
+                twitterKeyHandler.getTwitterConsumerSecret(),
+                twitterKeyHandler.getTwitterAccessTokenKey(),
+                twitterKeyHandler.getTwitterAccessTokenSecret());
 
         // Create a new BasicClient.
         BasicClient client = new ClientBuilder()
@@ -102,7 +114,7 @@ public class TwitterConsumer extends Thread {
 
                 if (obj.has("coordinates") && !obj.get("coordinates").isJsonNull()) {
                     DBEntryConstructor dbEntry = getFields(obj);
-                    System.out.println(dbEntry.getdbObject().toString());
+//                    System.out.println(dbEntry.getdbObject().toString());
                     dbClient.save(dbEntry.getdbObject());
                 }
 
@@ -111,7 +123,6 @@ public class TwitterConsumer extends Thread {
 
         client.stop();
         dbClient.shutdown();
-
 
     }
     //Method getFields extracts the required info from the passed in retrieved post

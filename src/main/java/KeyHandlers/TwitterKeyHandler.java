@@ -18,7 +18,7 @@ public class TwitterKeyHandler extends KeyHandler {
      * @param city the city location of the twitter stream query. Multiple keys are available
      *             to avoid rate limits and choice depends on city name;
      */
-    public TwitterKeyHandler(String keyFile, String city) throws IOException {
+    public TwitterKeyHandler(String keyFile, String city) {
 
         super(keyFile);
 

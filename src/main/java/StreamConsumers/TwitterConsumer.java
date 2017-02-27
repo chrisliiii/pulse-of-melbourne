@@ -42,7 +42,7 @@ public class TwitterConsumer extends Thread {
      *  @param  city the name of the city from which to query posts
      *  @param  properties CouchDB client properties
      */
-    public TwitterConsumer(String KEYFILE, String city, CouchDbProperties properties) throws IOException {
+    public TwitterConsumer(String KEYFILE, String city, CouchDbProperties properties) {
 
         if (city.equals("melbourne")) {
             this.southwest = new Coordinate(144.9061, -37.8549);

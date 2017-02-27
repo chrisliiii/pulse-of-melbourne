@@ -27,7 +27,7 @@ import java.util.HashSet;
 
 public class FoursquareConsumer extends Thread {
 
-    private double lat, lon;
+    private String city;
     private CouchDbClient dbClient;
     private FoursquareKeyHandler foursquareKeyHandler;
 
@@ -39,13 +39,7 @@ public class FoursquareConsumer extends Thread {
      */
     public FoursquareConsumer(String KEYFILE, String city, CouchDbProperties properties) {
 
-        if (city.equals("melbourne")) {             //Melbourne
-            this.lat = -37.768648;
-            this.lon = 144.906196;
-        } else {
-            this.lat = -33.820142;
-            this.lon = 151.155146;
-        }
+        this.city = city;
         this.foursquareKeyHandler = new FoursquareKeyHandler(KEYFILE);
         this.dbClient = new CouchDbClient(properties);
     }
@@ -54,6 +48,17 @@ public class FoursquareConsumer extends Thread {
      *  Starts the consumer thread to retrieve latest posts
      */
     public void run() {
+
+        double lat, lon;
+
+        //Set search location as appropriate
+        if (city.equals("melbourne")) {             //Melbourne
+            lat = -37.768648;
+            lon = 144.906196;
+        } else {
+            lat = -33.820142;
+            lon = 151.155146;
+        }
 
         //Create a new foursquare object to query server
         FoursquareApi foursquareApi = new FoursquareApi(foursquareKeyHandler.getFoursquareClientID(),
@@ -114,7 +119,6 @@ public class FoursquareConsumer extends Thread {
             lat = lat - latoffset;
         }
 
-        dbClient.shutdown();
     }
 
     // Method getFields extracts the required info from the passed in venue

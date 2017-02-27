@@ -38,7 +38,7 @@ import java.util.List;
  */
 public class YoutubeConsumer extends Thread {
 
-    private String location;
+    private final String location;
     private CouchDbClient dbClient;
     private YoutubeKeyHandler youtubeKeyHandler;
     private final long MAXRESULTS = 50;
@@ -144,8 +144,6 @@ public class YoutubeConsumer extends Thread {
         } catch (Exception e) {
             e.printStackTrace();
         }
-
-        dbClient.shutdown();
 
     }
 

@@ -52,7 +52,7 @@ public class StreamServer {
       * location in the form of IP:Port, for example 192.168.1.10:5984. After connectivity is confirmed, all
       * necessary consumer threads are started.
       */
-    public static void main(String[] args) throws IOException {
+    public static void main(String[] args) {
 
         // Load log4j properties from file
         PropertyConfigurator.configure(LOG4JPROPERTIES);

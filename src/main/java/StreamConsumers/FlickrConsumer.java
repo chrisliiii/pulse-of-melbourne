@@ -113,8 +113,6 @@ public class FlickrConsumer extends Thread {
             e.printStackTrace();
         }
 
-        dbClient.shutdown();
-
     }
 
     //Method getFields extracts the required info from the passed in retrieved post

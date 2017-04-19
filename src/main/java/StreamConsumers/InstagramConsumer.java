@@ -3,9 +3,11 @@ package StreamConsumers;
 import FieldCreators.DBEntryConstructor;
 import FieldCreators.CoordinatesCreator;
 import FieldCreators.DateArrayCreator;
+import FieldCreators.SuburbFinder;
 import KeyHandlers.InstagramKeyHandler;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonPrimitive;
+import org.geotools.data.simple.SimpleFeatureSource;
 import org.jinstagram.Instagram;
 import org.jinstagram.auth.model.Token;
 import org.jinstagram.entity.common.Location;
@@ -35,12 +37,13 @@ public class InstagramConsumer extends Thread {
     private CouchDbClient dbClient;
     private double latitude, longitude;
     private InstagramKeyHandler instagramKeyHandler;
+    private String city;
 
     /**
      *  Constructs a consumer object, setting the location, database client, and retrieving the API key(s)
-     *  @param  KEYFILE the filename of the file containing all API keys
+     * @param  KEYFILE the filename of the file containing all API keys
      *  @param  city the name of the city from which to query posts
-     *  @param  properties CouchDB client properties
+     * @param  properties CouchDB client properties
      */
     public InstagramConsumer(String KEYFILE, String city, CouchDbProperties properties) {
         if (city.equals("melbourne")) {
@@ -50,6 +53,7 @@ public class InstagramConsumer extends Thread {
             this.latitude = -33.8688;
             this.longitude = 151.2093;
         }
+        this.city = city;
         this.dbClient = new CouchDbClient(properties);
         instagramKeyHandler = new InstagramKeyHandler(KEYFILE);
     }
@@ -91,9 +95,9 @@ public class InstagramConsumer extends Thread {
                     }
                 }
 
-                // In order for access to appear random, the thread waits between 6-13 seconds at the end of
+                // In order for access to appear random, the thread waits between 5-10 seconds at the end of
                 // each while loop iteration. Equation is nextInt(max-min+1)+min
-                TimeUnit.SECONDS.sleep(random.nextInt(8) + 5);
+                TimeUnit.SECONDS.sleep(random.nextInt(5) + 5);
 
             } catch (InstagramException e) {
                 e.printStackTrace();
@@ -131,10 +135,13 @@ public class InstagramConsumer extends Thread {
         CoordinatesCreator coordinatesCreator = new CoordinatesCreator(latitude,longitude);
         JsonArray coordinates = coordinatesCreator.getCoordinates();
 
+        SuburbFinder suburbFinder = new SuburbFinder(latitude,longitude, city);
+        String suburb = suburbFinder.getSuburb();
+
         String user = post.getUser().getId();
         String text = post.getTags().toString();
 
-        return new DBEntryConstructor(timestamp,dateArray,coordinates,"instagram",user,text);
+        return new DBEntryConstructor(timestamp,dateArray,coordinates,"instagram",user,text, suburb);
     }
 
 }

@@ -4,6 +4,7 @@ import DBDocumentHandlers.LatestDocumentHandler;
 import FieldCreators.CoordinatesCreator;
 import FieldCreators.DBEntryConstructor;
 import FieldCreators.DateArrayCreator;
+import FieldCreators.SuburbFinder;
 import KeyHandlers.FlickrKeyHandler;
 import com.flickr4java.flickr.Flickr;
 import com.flickr4java.flickr.FlickrException;
@@ -13,9 +14,11 @@ import com.flickr4java.flickr.photos.PhotoList;
 import com.flickr4java.flickr.photos.SearchParameters;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonPrimitive;
+import org.geotools.data.simple.SimpleFeatureSource;
 import org.lightcouch.CouchDbClient;
 import org.lightcouch.CouchDbProperties;
 
+import java.io.File;
 import java.util.Iterator;
 
 /**
@@ -32,12 +35,13 @@ public class FlickrConsumer extends Thread {
     private CouchDbClient dbClient;
     private FlickrKeyHandler flickrKeyHandler;
     private Flickr flickr;
+    private String city;
 
     /**
      *  Constructs a consumer object, setting the location, database client, and retrieving the API key(s)
-     *  @param  KEYFILE the filename of the file containing all API keys
-     *  @param  city the name of the city from which to query posts
-     *  @param  properties CouchDB client properties
+     * @param  KEYFILE the filename of the file containing all API keys
+     * @param  city the name of the city from which to query posts
+     * @param  properties CouchDB client properties
      */
     public FlickrConsumer(String KEYFILE, String city, CouchDbProperties properties) {
         if (city.equals("melbourne")) {
@@ -47,7 +51,7 @@ public class FlickrConsumer extends Thread {
             this.latitude = "-33.8688";
             this.longitude = "151.2093";
         }
-
+        this.city = city;
         this.flickrKeyHandler = new FlickrKeyHandler(KEYFILE);
         this.dbClient = new CouchDbClient(properties);
     }
@@ -126,6 +130,8 @@ public class FlickrConsumer extends Thread {
         JsonPrimitive longitude = new JsonPrimitive(photoWithInfo.getGeoData().getLongitude());
         CoordinatesCreator coordinatesCreator = new CoordinatesCreator(latitude,longitude);
         JsonArray coordinates = coordinatesCreator.getCoordinates();
+        SuburbFinder suburbFinder = new SuburbFinder(latitude,longitude, city);
+        String suburb = suburbFinder.getSuburb();
 
         String user = photoWithInfo.getOwner().getId();
         String text;
@@ -133,7 +139,7 @@ public class FlickrConsumer extends Thread {
             text = photoWithInfo.getTitle();
         } else text = null;
 
-        return new DBEntryConstructor(timestamp,dateArray,coordinates,"flickr",user,text);
+        return new DBEntryConstructor(timestamp,dateArray,coordinates,"flickr",user,text,suburb);
 
     }
 

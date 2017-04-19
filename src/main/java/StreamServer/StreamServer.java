@@ -22,8 +22,12 @@ import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import org.apache.log4j.Logger;
 import org.apache.log4j.PropertyConfigurator;
+import org.geotools.data.FileDataStore;
+import org.geotools.data.FileDataStoreFinder;
+import org.geotools.data.simple.SimpleFeatureSource;
 import org.lightcouch.CouchDbProperties;
 
+import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
@@ -74,6 +78,7 @@ public class StreamServer {
 
         // Create new social media consumer objects
         final TwitterConsumer twitterConsumer = new TwitterConsumer(KEYFILE, city, properties);
+        final TwitterQuerier twitterQuerier = new TwitterQuerier(KEYFILE, city, properties);
         final FlickrConsumer flickrConsumer = new FlickrConsumer(KEYFILE, city, properties);
         final InstagramConsumer instagramConsumer = new InstagramConsumer(KEYFILE, city, properties);
         final FoursquareConsumer foursquareConsumer = new FoursquareConsumer(KEYFILE, city, properties);
@@ -83,8 +88,9 @@ public class StreamServer {
         // twitterConsumer relies on a stream so only requires to be started once.
         // instagramConsumer has an internal while loop that re-queries the server every few seconds
         // foursquareConsumer, flickrConsumer, and youtubeConsumer are all started at an hourly intervals
-        //      due to a lower update rate.
+        //       due to a lower update rate.
         twitterConsumer.start();
+        twitterQuerier.start();
         instagramConsumer.start();
         ScheduledExecutorService ses = Executors.newScheduledThreadPool(3);
         ses.scheduleAtFixedRate(foursquareConsumer, 0, 1, TimeUnit.HOURS);

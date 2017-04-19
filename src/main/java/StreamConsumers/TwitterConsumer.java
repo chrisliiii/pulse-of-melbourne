@@ -1,11 +1,15 @@
 package StreamConsumers;
 
-import FieldCreators.DBEntryConstructor;
 import FieldCreators.CoordinatesCreator;
+import FieldCreators.DBEntryConstructor;
 import FieldCreators.DateArrayCreator;
+import FieldCreators.SuburbFinder;
 import KeyHandlers.TwitterKeyHandler;
 import com.google.common.collect.Lists;
-import com.google.gson.*;
+import com.google.gson.JsonArray;
+import com.google.gson.JsonObject;
+import com.google.gson.JsonParser;
+import com.google.gson.JsonPrimitive;
 import com.twitter.hbc.ClientBuilder;
 import com.twitter.hbc.core.Constants;
 import com.twitter.hbc.core.endpoint.Location;
@@ -17,8 +21,6 @@ import com.twitter.hbc.httpclient.auth.Authentication;
 import com.twitter.hbc.httpclient.auth.OAuth1;
 import org.lightcouch.CouchDbClient;
 import org.lightcouch.CouchDbProperties;
-
-import java.io.*;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
@@ -33,14 +35,16 @@ import java.util.concurrent.TimeUnit;
 public class TwitterConsumer extends Thread {
 
     private CouchDbClient dbClient;
+    CouchDbProperties properties;
     private Coordinate southwest, northeast;
     private TwitterKeyHandler twitterKeyHandler;
+    private String city;
 
     /**
      *  Constructs a consumer object, setting the location, database client, and retrieving the API key(s)
-     *  @param  KEYFILE the filename of the file containing all API keys
+     * @param  KEYFILE the filename of the file containing all API keys
      *  @param  city the name of the city from which to query posts
-     *  @param  properties CouchDB client properties
+     * @param  properties CouchDB client properties
      */
     public TwitterConsumer(String KEYFILE, String city, CouchDbProperties properties) {
 
@@ -51,8 +55,10 @@ public class TwitterConsumer extends Thread {
             this.southwest = new Coordinate(151.1551, -33.9064);
             this.northeast = new Coordinate(151.2689, -33.8201);
         }
+        this.city = city;
         this.twitterKeyHandler = new TwitterKeyHandler(KEYFILE,city);
         this.dbClient = new CouchDbClient(properties);
+        this.properties = properties;
     }
 
     /**
@@ -114,10 +120,11 @@ public class TwitterConsumer extends Thread {
 
                 if (obj.has("coordinates") && !obj.get("coordinates").isJsonNull()) {
                     DBEntryConstructor dbEntry = getFields(obj);
-//                    System.out.println(dbEntry.getdbObject().toString());
+                    System.out.println(dbEntry.getdbObject().toString());
                     dbClient.save(dbEntry.getdbObject());
+                    TwitterUserQuerier userQuerier = new TwitterUserQuerier(twitterKeyHandler, city, properties, obj.getAsJsonObject("user"));
+                    userQuerier.start();
                 }
-
             }
         }
 
@@ -141,7 +148,10 @@ public class TwitterConsumer extends Thread {
         CoordinatesCreator coordinatesCreator = new CoordinatesCreator(latitude,longitude);
         JsonArray coordinates = coordinatesCreator.getCoordinates();
 
-        return new DBEntryConstructor(timestamp,dateArray,coordinates,"twitter",user,text);
+        SuburbFinder suburbFinder = new SuburbFinder(latitude,longitude,city);
+        String suburb = suburbFinder.getSuburb();
+
+        return new DBEntryConstructor(timestamp,dateArray,coordinates,"twitter",user,text, suburb);
 
     }
 

@@ -4,6 +4,7 @@ import DBDocumentHandlers.LatestDocumentHandler;
 import FieldCreators.CoordinatesCreator;
 import FieldCreators.DBEntryConstructor;
 import FieldCreators.DateArrayCreator;
+import FieldCreators.SuburbFinder;
 import KeyHandlers.YoutubeKeyHandler;
 import com.google.api.client.googleapis.json.GoogleJsonResponseException;
 import com.google.api.client.http.HttpRequest;
@@ -20,6 +21,7 @@ import com.google.api.services.youtube.model.Video;
 import com.google.api.services.youtube.model.VideoListResponse;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonPrimitive;
+import org.geotools.data.simple.SimpleFeatureSource;
 import org.lightcouch.CouchDbClient;
 import org.lightcouch.CouchDbProperties;
 
@@ -42,13 +44,14 @@ public class YoutubeConsumer extends Thread {
     private CouchDbClient dbClient;
     private YoutubeKeyHandler youtubeKeyHandler;
     private final long MAXRESULTS = 50;
-    YouTube youtube;
+    private YouTube youtube;
+    String city;
 
     /**
      *  Constructs a consumer object, setting the location, database client, and retrieving the API key(s)
-     *  @param  KEYFILE the filename of the file containing all API keys
+     * @param  KEYFILE the filename of the file containing all API keys
      *  @param  city the name of the city from which to query posts
-     *  @param  properties CouchDB client properties
+     * @param  properties CouchDB client properties
      */
     public YoutubeConsumer(String KEYFILE, String city, CouchDbProperties properties) {
         if (city.equals("melbourne")) {
@@ -56,6 +59,7 @@ public class YoutubeConsumer extends Thread {
         } else {
             this.location = "-33.8688" + "," + "151.2093";
         }
+        this.city = city;
         this.dbClient = new CouchDbClient(properties);
         youtubeKeyHandler = new YoutubeKeyHandler(KEYFILE, city);
     }
@@ -160,10 +164,13 @@ public class YoutubeConsumer extends Thread {
         CoordinatesCreator coordinatesCreator = new CoordinatesCreator(latitude, longitude);
         JsonArray coordinates = coordinatesCreator.getCoordinates();
 
+        SuburbFinder suburbFinder = new SuburbFinder(latitude,longitude,city);
+        String suburb = suburbFinder.getSuburb();
+
         String user = video.getId();
         String text = video.getSnippet().getTitle();
 
-        return new DBEntryConstructor(timestamp, dateArray, coordinates, "youtube", user, text);
+        return new DBEntryConstructor(timestamp, dateArray, coordinates, "youtube", user, text, suburb);
     }
 }
 

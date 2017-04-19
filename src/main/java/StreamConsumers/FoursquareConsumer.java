@@ -3,6 +3,7 @@ package StreamConsumers;
 import FieldCreators.DBEntryConstructor;
 import FieldCreators.CoordinatesCreator;
 import FieldCreators.DateArrayCreator;
+import FieldCreators.SuburbFinder;
 import KeyHandlers.FoursquareKeyHandler;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonPrimitive;
@@ -11,6 +12,7 @@ import fi.foyt.foursquare.api.FoursquareApiException;
 import fi.foyt.foursquare.api.Result;
 import fi.foyt.foursquare.api.entities.CompactVenue;
 import fi.foyt.foursquare.api.entities.VenuesSearchResult;
+import org.geotools.data.simple.SimpleFeatureSource;
 import org.lightcouch.CouchDbClient;
 import org.lightcouch.CouchDbProperties;
 
@@ -30,12 +32,13 @@ public class FoursquareConsumer extends Thread {
     private String city;
     private CouchDbClient dbClient;
     private FoursquareKeyHandler foursquareKeyHandler;
+    SimpleFeatureSource featureSource;
 
     /**
      *  Constructs a consumer object, setting the location, database client, and retrieving the API key(s)
-     *  @param  KEYFILE the filename of the file containing all API keys
+     * @param  KEYFILE the filename of the file containing all API keys
      *  @param  city the name of the city from which to query posts
-     *  @param  properties CouchDB client properties
+     * @param  properties CouchDB client properties
      */
     public FoursquareConsumer(String KEYFILE, String city, CouchDbProperties properties) {
 
@@ -132,10 +135,13 @@ public class FoursquareConsumer extends Thread {
         CoordinatesCreator coordinatesCreator = new CoordinatesCreator(latitude, longitude);
         JsonArray coordinates = coordinatesCreator.getCoordinates();
 
+        SuburbFinder suburbFinder = new SuburbFinder(latitude,longitude, city);
+        String suburb = suburbFinder.getSuburb();
+
         String user = venue.getId();
         String text = venue.getName();
 
-        return new DBEntryConstructor(timestamp, dateArray, coordinates, "foursquare", user, text);
+        return new DBEntryConstructor(timestamp, dateArray, coordinates, "foursquare", user, text, suburb);
     }
 
 

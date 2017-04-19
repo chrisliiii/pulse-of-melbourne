@@ -15,6 +15,7 @@
  */
 package StreamServer;
 
+import Geo.BBox;
 import StreamConsumers.*;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
@@ -96,6 +97,7 @@ public class StreamServer {
         ses.scheduleAtFixedRate(foursquareConsumer, 0, 1, TimeUnit.HOURS);
         ses.scheduleAtFixedRate(flickrConsumer, 0, 1, TimeUnit.HOURS);
         ses.scheduleAtFixedRate(youtubeConsumer, 0, 1, TimeUnit.HOURS);
+
     }
 
 

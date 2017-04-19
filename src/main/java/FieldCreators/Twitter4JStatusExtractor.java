@@ -1,5 +1,6 @@
 package FieldCreators;
 
+import Geo.SuburbFinder;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonPrimitive;
 import twitter4j.Status;

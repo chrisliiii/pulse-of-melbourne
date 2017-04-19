@@ -1,6 +1,7 @@
 package StreamConsumers;
 
 import FieldCreators.*;
+import Geo.BBox;
 import KeyHandlers.TwitterKeyHandler;
 import com.google.gson.JsonObject;
 import org.lightcouch.CouchDbClient;
@@ -62,6 +63,8 @@ public class TwitterUserQuerier extends Thread{
     //Gets the tweets from a user posted after 20 Dec, 2016, up to 3200, as a List of Json objects
     private List<JsonObject> retreiveTweets(long id) {
 
+        BBox box = new BBox(city);
+
         int pageno = 1;
         List<Status> statuses = new ArrayList();
         List<JsonObject> db_objects = new ArrayList<JsonObject>();
@@ -83,7 +86,7 @@ public class TwitterUserQuerier extends Thread{
         }
 
         for (Status tweet : statuses) {
-            if (tweet.getGeoLocation() != null) {
+            if (tweet.getGeoLocation() != null && box.checkPoint(tweet.getGeoLocation().getLongitude(),tweet.getGeoLocation().getLatitude())) {
                 DBEntryConstructor dbEntryConstructor = new Twitter4JStatusExtractor().getFields(tweet,city);
                 JsonObject entry = dbEntryConstructor.getdbObject();
                 entry.addProperty("_id", String.valueOf(tweet.getId()));

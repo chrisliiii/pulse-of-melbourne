@@ -3,7 +3,7 @@ package StreamConsumers;
 import FieldCreators.DBEntryConstructor;
 import FieldCreators.CoordinatesCreator;
 import FieldCreators.DateArrayCreator;
-import FieldCreators.SuburbFinder;
+import Geo.SuburbFinder;
 import KeyHandlers.FoursquareKeyHandler;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonPrimitive;

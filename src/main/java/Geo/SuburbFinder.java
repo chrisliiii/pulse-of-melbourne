@@ -1,4 +1,4 @@
-package FieldCreators;
+package Geo;
 
 import com.google.gson.JsonPrimitive;
 import org.geotools.data.FileDataStore;

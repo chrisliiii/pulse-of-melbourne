@@ -4,7 +4,7 @@ import DBDocumentHandlers.LatestDocumentHandler;
 import FieldCreators.CoordinatesCreator;
 import FieldCreators.DBEntryConstructor;
 import FieldCreators.DateArrayCreator;
-import FieldCreators.SuburbFinder;
+import Geo.SuburbFinder;
 import KeyHandlers.FlickrKeyHandler;
 import com.flickr4java.flickr.Flickr;
 import com.flickr4java.flickr.FlickrException;
@@ -14,11 +14,9 @@ import com.flickr4java.flickr.photos.PhotoList;
 import com.flickr4java.flickr.photos.SearchParameters;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonPrimitive;
-import org.geotools.data.simple.SimpleFeatureSource;
 import org.lightcouch.CouchDbClient;
 import org.lightcouch.CouchDbProperties;
 
-import java.io.File;
 import java.util.Iterator;
 
 /**

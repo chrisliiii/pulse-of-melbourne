@@ -4,7 +4,7 @@ import DBDocumentHandlers.LatestDocumentHandler;
 import FieldCreators.CoordinatesCreator;
 import FieldCreators.DBEntryConstructor;
 import FieldCreators.DateArrayCreator;
-import FieldCreators.SuburbFinder;
+import Geo.SuburbFinder;
 import KeyHandlers.YoutubeKeyHandler;
 import com.google.api.client.googleapis.json.GoogleJsonResponseException;
 import com.google.api.client.http.HttpRequest;
@@ -21,7 +21,6 @@ import com.google.api.services.youtube.model.Video;
 import com.google.api.services.youtube.model.VideoListResponse;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonPrimitive;
-import org.geotools.data.simple.SimpleFeatureSource;
 import org.lightcouch.CouchDbClient;
 import org.lightcouch.CouchDbProperties;
 

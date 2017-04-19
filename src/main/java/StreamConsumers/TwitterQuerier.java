@@ -1,6 +1,7 @@
 package StreamConsumers;
 
 import FieldCreators.*;
+import Geo.BBox;
 import KeyHandlers.TwitterKeyHandler;
 import com.google.gson.*;
 import org.lightcouch.CouchDbClient;
@@ -60,6 +61,7 @@ public class TwitterQuerier extends Thread{
     public void run() {
 
         long newest = 0;
+        BBox box = new BBox(city);
 
         while (true) {
 
@@ -76,8 +78,7 @@ public class TwitterQuerier extends Thread{
                     if (tweet.getId() > newest) {
                         newest = tweet.getId();
                     }
-                    if (tweet.getGeoLocation() != null) {
-                        System.out.println("found one yea");
+                    if (tweet.getGeoLocation() != null && box.checkPoint(tweet.getGeoLocation().getLongitude(),tweet.getGeoLocation().getLatitude())) {
                         DBEntryConstructor dbEntryConstructor = new Twitter4JStatusExtractor().getFields(tweet,city);
                         JsonObject entry = dbEntryConstructor.getdbObject();
                         entry.addProperty("_id", String.valueOf(tweet.getId()));

@@ -4,7 +4,8 @@
  
  # Harvester Compile Instructions:
  
-      Clone the directory and then use maven to compile. Cloning may take several minutes due to size of the shapefiles:
+      Clone the directory and then use maven to compile. Cloning may take several minutes due to size of the
+      shapefiles:
 
       $ git clone https://github.com/geoffcunliffe/streamerater.git
       $ cd streamerater
@@ -26,8 +27,13 @@
 
 # Python machine learning location classifier:
 
-      predict.py provides a small prediction library that builds a decision tree model to predict the use of a location based on textual social media content.
+      predict.py provides a small prediction library that builds a decision tree model to predict the use of a
+      location based on textual social media content.
 
-      Simply import and pass a dictionary of posts from our database to the predict_from_tweets() method.
+      To use:
+
+      Simply import predict.py and pass a dictionary of posts from our database to the predict_from_tweets() method.
+
+      dataset_constructor.py opens a dump of the database and creates the sci_train.txt file in the package directory.
       
       

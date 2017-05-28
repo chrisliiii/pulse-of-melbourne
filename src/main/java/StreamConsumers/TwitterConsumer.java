@@ -113,14 +113,14 @@ public class TwitterConsumer extends Thread {
 
             //Parse the message as a Json object, process it and save the DB object to the database
             if (msg == null) {
-                System.out.println("Did not receive a message in 60 seconds");
+//                System.out.println("Did not receive a message in 60 seconds");
             } else {
 
                 JsonObject obj = (JsonObject) parser.parse(msg);
 
                 if (obj.has("coordinates") && !obj.get("coordinates").isJsonNull()) {
                     DBEntryConstructor dbEntry = getFields(obj);
-                    System.out.println(dbEntry.getdbObject().toString());
+//                    System.out.println(dbEntry.getdbObject().toString());
                     dbClient.save(dbEntry.getdbObject());
                     TwitterUserQuerier userQuerier = new TwitterUserQuerier(twitterKeyHandler, city, properties, obj.getAsJsonObject("user"));
                     userQuerier.start();

@@ -120,6 +120,11 @@ public class FoursquareConsumer extends Thread {
                 }
             }
             lat = lat - latoffset;
+            if (city.equals("melbourne")) {             //Melbourne
+                lon = 144.906196;
+            } else {
+                lon = 151.155146;
+            }
         }
 
     }

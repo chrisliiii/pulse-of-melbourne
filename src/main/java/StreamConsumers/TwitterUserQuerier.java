@@ -41,8 +41,14 @@ public class TwitterUserQuerier extends Thread{
         this.user = user;
         this.city = city;
         this.dbClient = new CouchDbClient(properties);
-        properties.setDbName("twitter_users");
-        this.userdbClient = new CouchDbClient(properties);
+        CouchDbProperties userDbProperties = new CouchDbProperties()
+                .setDbName("twitter_users")
+                .setProtocol("http")
+                .setHost(properties.getHost())
+                .setPort(properties.getPort())
+                .setMaxConnections(100)
+                .setConnectionTimeout(0);
+        this.userdbClient = new CouchDbClient(userDbProperties);
     }
 
     /**

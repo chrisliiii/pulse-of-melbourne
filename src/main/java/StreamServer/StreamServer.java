@@ -89,7 +89,7 @@ public class StreamServer {
         // twitterConsumer relies on a stream so only requires to be started once.
         // instagramConsumer has an internal while loop that re-queries the server every few seconds
         // foursquareConsumer, flickrConsumer, and youtubeConsumer are all started at an hourly intervals
-        //       due to a lower update rate.
+        //      due to a lower update rate.
         twitterConsumer.start();
         twitterQuerier.start();
         instagramConsumer.start();
